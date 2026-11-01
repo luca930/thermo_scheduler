@@ -1,0 +1,75 @@
+import { describe, expect, it, vi } from "vitest";
+import "../src/thermo-scheduler-card";
+
+const DATA = {
+  profiles: {
+    p1: {
+      id: "p1",
+      name: "Casa",
+      blocks: [{ days: [0, 1, 2, 3, 4], start: "06:30", temperature: 21, hvac_mode: null }],
+    },
+  },
+  conditions: {
+    c1: {
+      id: "c1",
+      name: "Finestra",
+      checks: [{ entity_id: "binary_sensor.finestra", op: "=", value: "on" }],
+      match: "all",
+      delay: 120,
+      action: { kind: "off", temperature: null },
+    },
+  },
+  assignments: { "climate.salotto": { profile_id: "p1", condition_ids: ["c1"], enabled: true } },
+  overrides: {},
+};
+
+async function mount(language = "it") {
+  const callWS = vi.fn(async (msg: { type: string }) =>
+    msg.type === "thermo_scheduler/list" ? DATA : undefined,
+  );
+  const el = document.createElement("thermo-scheduler-card") as any;
+  el.setConfig({});
+  el.hass = {
+    language,
+    callWS,
+    states: {
+      "climate.salotto": { state: "heat", attributes: { friendly_name: "Salotto" } },
+      "sensor.salotto_scheduler": {
+        state: "override",
+        attributes: { override_until: "2026-11-04T22:00:00+01:00" },
+      },
+    },
+  };
+  document.body.appendChild(el);
+  await el.updateComplete;
+  await new Promise((r) => setTimeout(r, 0));
+  await el.updateComplete;
+  return { el, callWS };
+}
+
+describe("thermo-scheduler-card", () => {
+  it("renders override_until label", async () => {
+    const { el } = await mount("it");
+    expect(el.shadowRoot.textContent).toContain("Fino alle 22:00");
+  });
+
+  it("saves profile via ws", async () => {
+    const { el, callWS } = await mount("en");
+    el._profile = { id: "p9", name: "Test", blocks: [] };
+    await el.updateComplete;
+    el.shadowRoot.querySelector('[data-action="save-profile"]').click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(callWS).toHaveBeenCalledWith({
+      type: "thermo_scheduler/save_profile",
+      profile: { id: "p9", name: "Test", blocks: [] },
+    });
+  });
+
+  it("lists conditions with delay and action", async () => {
+    const { el } = await mount("it");
+    const text = el.shadowRoot.textContent;
+    expect(text).toContain("Finestra");
+    expect(text).toContain("120");
+    expect(text).toContain("Spegni");
+  });
+});

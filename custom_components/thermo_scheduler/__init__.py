@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -37,6 +39,24 @@ def _register_services(hass: HomeAssistant) -> None:
         hass.services.async_register(DOMAIN, name, handle, schema)
 
 
+CARD_URL = f"/{DOMAIN}/thermo-scheduler-card.js"
+
+
+async def _register_card(hass: HomeAssistant) -> None:
+    """Serve il bundle della card e lo carica nel frontend (una sola volta per avvio)."""
+    if hass.data.get(f"{DOMAIN}_card") or getattr(hass, "http", None) is None:
+        return
+    if "frontend" not in hass.config.components:
+        return
+    from homeassistant.components.frontend import add_extra_js_url
+    from homeassistant.components.http import StaticPathConfig
+
+    hass.data[f"{DOMAIN}_card"] = True
+    path = Path(__file__).parent / "www" / "thermo-scheduler-card.js"
+    await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(path), False)])
+    add_extra_js_url(hass, CARD_URL)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     storage = Storage(hass)
     await storage.async_load()
@@ -46,6 +66,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _register_services(hass)
     async_register_commands(hass)
+    await _register_card(hass)
     return True
 
 

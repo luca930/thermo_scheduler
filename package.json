@@ -1,0 +1,18 @@
+{
+  "name": "thermo-scheduler-card",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/thermo-scheduler-card.ts --bundle --format=esm --minify --outfile=custom_components/thermo_scheduler/www/thermo-scheduler-card.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "happy-dom": "^21.0.4",
+    "lit": "^3.3.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
