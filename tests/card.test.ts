@@ -26,19 +26,21 @@ const DATA = {
   overrides: {},
 };
 
-async function mount(language = "it") {
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+async function mount(language = "it", entity = "climate.salotto") {
   const callWS = vi.fn(async (msg: { type: string }) =>
     msg.type === "thermo_scheduler/list" ? DATA : undefined,
   );
   const el = document.createElement("thermo-scheduler-card") as any;
-  el.setConfig({});
+  el.setConfig({ entity });
   el.hass = {
     language,
     callWS,
     states: {
-      "climate.salotto": { state: "heat", attributes: { friendly_name: "Salotto" } },
-      "climate.camera": { state: "heat", attributes: { friendly_name: "Camera" } },
-      "climate.bagno": { state: "heat", attributes: { friendly_name: "Bagno" } },
+      "climate.salotto": { state: "heat", attributes: { friendly_name: "Salotto", temperature: 21 } },
+      "climate.camera": { state: "heat", attributes: { friendly_name: "Camera", temperature: 20 } },
+      "climate.bagno": { state: "heat", attributes: { friendly_name: "Bagno", temperature: 19 } },
       "sensor.salotto_scheduler": {
         state: "override",
         attributes: { override_until: "2026-11-04T22:00:00+01:00" },
@@ -47,25 +49,52 @@ async function mount(language = "it") {
   };
   document.body.appendChild(el);
   await el.updateComplete;
-  await new Promise((r) => setTimeout(r, 0));
+  await tick();
   await el.updateComplete;
   return { el, callWS };
 }
 
+const click = async (el: any, selector: string) => {
+  el.shadowRoot.querySelector(selector).click();
+  await el.updateComplete;
+};
+
 describe("thermo-scheduler-card", () => {
-  it("renders override_until label", async () => {
+  it("requires an entity in the configuration", () => {
+    const el = document.createElement("thermo-scheduler-card") as any;
+    expect(() => el.setConfig({})).toThrow(/entity/);
+  });
+
+  it("shows the override in the summary", async () => {
     const { el } = await mount("it");
     expect(el.shadowRoot.textContent).toContain("Fino alle 22:00");
   });
 
+  it("summary is read-only and opens the settings on tap", async () => {
+    const { el } = await mount("it");
+    expect(el.shadowRoot.querySelector('input[type="time"]')).toBeNull();
+    await click(el, "[data-climate]");
+    expect(el.shadowRoot.querySelector('[data-action="open-schedule"]')).not.toBeNull();
+  });
+
+  it("opens the schedule and edits a slot", async () => {
+    const { el } = await mount("it");
+    await click(el, "[data-climate]");
+    await click(el, '[data-action="open-schedule"]');
+    expect(el.shadowRoot.querySelector('input[type="time"]')).toBeNull();
+    await click(el, ".week button:nth-child(1)"); // lunedì
+    await click(el, ".slot");
+    expect(el.shadowRoot.querySelector('input[type="time"]').value).toBe("06:30");
+  });
+
   it("saves profile via ws", async () => {
     const { el, callWS } = await mount("en");
-    el.shadowRoot.querySelector('[data-action="configure"]').click();
-    await el.updateComplete;
+    await click(el, "[data-climate]");
+    await click(el, '[data-action="open-schedule"]');
     el._profile = { id: "p9", name: "Test", blocks: [] };
     await el.updateComplete;
-    el.shadowRoot.querySelector('[data-action="save-profile"]').click();
-    await new Promise((r) => setTimeout(r, 0));
+    await click(el, '[data-action="save-profile"]');
+    await tick();
     expect(callWS).toHaveBeenCalledWith({
       type: "thermo_scheduler/save_profile",
       profile: { id: "p9", name: "Test", blocks: [] },
@@ -74,54 +103,27 @@ describe("thermo-scheduler-card", () => {
 
   it("lists conditions with delay and action", async () => {
     const { el } = await mount("it");
+    await click(el, "[data-climate]");
+    await click(el, '[data-action="conditions"]');
     const text = el.shadowRoot.textContent;
     expect(text).toContain("Finestra");
     expect(text).toContain("120");
     expect(text).toContain("Spegni");
   });
 
-  it("shows the selected thermostat's schedule and who shares it", async () => {
-    const { el } = await mount("it");
-    el._select("climate.camera");
-    await el.updateComplete;
-    const root = el.shadowRoot;
-    expect(root.querySelector('input[type="time"]')).toBeNull();
-    root.querySelector('[data-action="configure"]').click();
-    await el.updateComplete;
-    expect(root.querySelector('input[type="time"]').value).toBe("06:30");
-    expect(root.textContent).toContain("Condivisa con: Salotto");
-  });
-
-  it("shows the schedule read-only until configure is pressed", async () => {
-    const { el } = await mount("it");
-    el._select("climate.camera");
-    await el.updateComplete;
-    const root = el.shadowRoot;
-    expect(root.querySelector('[data-action="save-profile"]')).toBeNull();
-    expect(root.querySelector(".blocks").textContent).toContain("06:30");
-    expect(root.querySelector('[data-action="configure"]')).not.toBeNull();
-  });
-
-  it("shows an error banner with retry when an action fails", async () => {
-    const { el, callWS } = await mount("it");
-    callWS.mockRejectedValueOnce(new Error("boom"));
-    el._select("climate.camera");
-    await el.updateComplete;
-    el.shadowRoot.querySelector('[data-action="clear-override"]')?.click();
-    el.shadowRoot.querySelector('select[data-action="link"]').dispatchEvent(new Event("change"));
-    await new Promise((r) => setTimeout(r, 0));
-    await el.updateComplete;
-    expect(el.shadowRoot.querySelector('[role="alert"]')).not.toBeNull();
+  it("shows who shares the selected thermostat's schedule", async () => {
+    const { el } = await mount("it", "climate.camera");
+    await click(el, "[data-climate]");
+    expect(el.shadowRoot.textContent).toContain("Condivisa con: Salotto");
   });
 
   it("links an unassigned thermostat to another thermostat's schedule", async () => {
-    const { el, callWS } = await mount("it");
-    el._select("climate.bagno");
-    await el.updateComplete;
+    const { el, callWS } = await mount("it", "climate.bagno");
+    await click(el, "[data-climate]");
     const sel = el.shadowRoot.querySelector('[data-action="link"]');
     sel.value = "p1";
     sel.dispatchEvent(new Event("change"));
-    await new Promise((r) => setTimeout(r, 0));
+    await tick();
     expect(callWS).toHaveBeenCalledWith({
       type: "thermo_scheduler/assign",
       climate_id: "climate.bagno",
@@ -130,11 +132,10 @@ describe("thermo-scheduler-card", () => {
   });
 
   it("makes a shared schedule independent by copying it", async () => {
-    const { el, callWS } = await mount("it");
-    el._select("climate.camera");
-    await el.updateComplete;
-    el.shadowRoot.querySelector('[data-action="own"]').click();
-    await new Promise((r) => setTimeout(r, 0));
+    const { el, callWS } = await mount("it", "climate.camera");
+    await click(el, "[data-climate]");
+    await click(el, '[data-action="own"]');
+    await tick();
     const save = callWS.mock.calls.map((c: any[]) => c[0]).find((m: any) => m.type === "thermo_scheduler/save_profile");
     expect(save.profile.name).toBe("Camera");
     expect(save.profile.id).not.toBe("p1");
@@ -142,5 +143,16 @@ describe("thermo-scheduler-card", () => {
     expect(callWS).toHaveBeenCalledWith(
       expect.objectContaining({ type: "thermo_scheduler/assign", climate_id: "climate.camera", profile_id: save.profile.id }),
     );
+  });
+
+  it("shows an error banner with retry when an action fails", async () => {
+    const { el, callWS } = await mount("it", "climate.camera");
+    callWS.mockRejectedValueOnce(new Error("boom"));
+    await click(el, "[data-climate]");
+    const sel = el.shadowRoot.querySelector('select[data-action="link"]');
+    sel.dispatchEvent(new Event("change"));
+    await tick();
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('[role="alert"]')).not.toBeNull();
   });
 });

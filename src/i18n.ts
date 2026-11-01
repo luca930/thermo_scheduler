@@ -14,6 +14,8 @@ const STRINGS: Record<string, Record<string, string>> = {
     configure: "Configure", active: "Active", schedule: "Schedule", noBlocks: "No schedule blocks",
     emptySchedule: "No schedule for this thermostat", heating: "Heating", cooling: "Cooling", off: "Off",
     target: "Target", lower: "Lower by 0.5 °", raise: "Raise by 0.5 °", actionFailed: "Action failed", retry: "Retry",
+    next: "Next", tomorrow: "Tomorrow", timeSlots: "Time slots", back: "Back", noBlocksDay: "No slots this day",
+    slot: "Slot", done: "Done", forThis: "For this thermostat",
   },
   it: {
     climates: "Termostati", profiles: "Programmazioni", conditions: "Condizioni",
@@ -31,6 +33,8 @@ const STRINGS: Record<string, Record<string, string>> = {
     emptySchedule: "Nessuna programmazione per questo termostato", heating: "Riscaldamento", cooling: "Raffrescamento",
     off: "Spento", target: "Obiettivo", lower: "Abbassa di 0,5 °", raise: "Alza di 0,5 °",
     actionFailed: "Operazione non riuscita", retry: "Riprova",
+    next: "Prossima", tomorrow: "Domani", timeSlots: "Fasce orarie", back: "Indietro", noBlocksDay: "Nessuna fascia in questo giorno",
+    slot: "Fascia", done: "Fine", forThis: "Per questo termostato",
   },
 };
 
