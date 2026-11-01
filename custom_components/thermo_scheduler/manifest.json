@@ -5,10 +5,10 @@
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["websocket_api"],
-  "documentation": "https://github.com/OWNER/thermo_scheduler",
+  "documentation": "https://github.com/luca930/thermo_scheduler",
   "integration_type": "service",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/OWNER/thermo_scheduler/issues",
+  "issue_tracker": "https://github.com/luca930/thermo_scheduler/issues",
   "requirements": [],
   "single_config_entry": true,
   "version": "0.1.0"
