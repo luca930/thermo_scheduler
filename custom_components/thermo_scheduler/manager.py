@@ -13,11 +13,12 @@ from homeassistant.helpers.event import async_track_point_in_time, async_track_s
 from homeassistant.util import dt as dt_util
 
 from .core.conditions import Condition, evaluate
+from .const import DOMAIN
 from .core.heating import House, Room, calibration, minutes_to_target
 from .core.resolve import Override, Target, resolve
 from .core.schedule import Profile, next_block, next_change
 from .learning import HeatingLearner
-from .storage import Assignment, Storage
+from .storage import LOG_LIMIT, Assignment, Storage
 
 _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE = ("unavailable", "unknown")
@@ -151,6 +152,7 @@ class Manager:
         expired = [c for c, o in self.storage.data.overrides.items() if o.until <= now]
         for cid in expired:
             del self.storage.data.overrides[cid]
+            self.log("auto", cid, "override_scaduto", "torna alla programmazione")
         if expired:
             await self.storage.async_save()
         self._track_states()
@@ -187,6 +189,29 @@ class Manager:
         elif new.context.id not in self.own_context_ids and self._is_manual(cid, old, new):
             await self._set_override(cid, new)
 
+    def log(self, source: str, climate_id: str | None, action: str, detail: str = "") -> None:
+        """Registra un'azione: origine ("manual" o "auto"), termostato, descrizione.
+
+        Va nello storage (letto dalla WebSocket) e nel registro di Home Assistant.
+        """
+        entry = {
+            "ts": dt_util.now().isoformat(timespec="seconds"),
+            "source": source,
+            "climate": climate_id,
+            "action": action,
+            "detail": detail,
+        }
+        log = self.storage.data.log
+        log.append(entry)
+        del log[:-LOG_LIMIT]
+        self.storage.async_delay_save()
+        name = climate_id or "thermo_scheduler"
+        message = f"{'Manuale' if source == 'manual' else 'Automatico'}: {action}" + (f" — {detail}" if detail else "")
+        self.hass.bus.async_fire(
+            f"{DOMAIN}_log",
+            {"message": message, "entity_id": climate_id, "name": name},
+        )
+
     def _house(self) -> House:
         o = self._options()
         return House(o.get("emitter", "radiators"), o.get("boiler", "gas"), o.get("energy_class", "D"))
@@ -213,6 +238,10 @@ class Manager:
             return
         history = self.storage.data.episodes.setdefault(climate_id, [])
         history.append(episode)
+        self.log(
+            "auto", climate_id, "ciclo_appreso",
+            f"{episode.start_in} → {episode.end_in} °C in {episode.minutes:.0f} min (esterna {episode.outdoor} °C)",
+        )
         del history[:-MAX_EPISODES]
         await self.storage.async_save()
 
@@ -263,6 +292,7 @@ class Manager:
         if until is None:
             return
         data.overrides[climate_id] = Override(until, new.attributes.get("temperature"), new.state)
+        self.log("manual", climate_id, "override", f"{new.state} {new.attributes.get('temperature')} °C")
         await self.storage.async_save()
         await self.async_refresh(climate_id)
 
@@ -338,12 +368,14 @@ class Manager:
             self._saved_mode[climate_id] = state.state
             await self.storage.async_save()
         self._active[climate_id] = cond
+        self.log("auto", climate_id, "condizione_attiva", cond.name)
         if self.storage.data.overrides.pop(climate_id, None) is not None:
             await self.storage.async_save()
         await self.async_refresh(climate_id)
 
     async def _deactivate(self, climate_id: str) -> None:
-        self._active.pop(climate_id, None)
+        if (cond := self._active.pop(climate_id, None)) is not None:
+            self.log("auto", climate_id, "condizione_finita", cond.name)
         mode = self._saved_mode.pop(climate_id, None)
         if mode:
             await self.storage.async_save()
@@ -391,14 +423,17 @@ class Manager:
         attrs = state.attributes
         context = Context()
         self.own_context_ids.append(context.id)
+        action = "preriscaldamento" if target.preheating else "fascia"
         mode = target.hvac_mode
         if mode and mode in attrs.get("hvac_modes", []) and mode != state.state:
             await self._call("set_hvac_mode", {"entity_id": climate_id, "hvac_mode": mode}, context)
+            self.log("auto", climate_id, action, f"modalità {mode}")
         temp = target.temperature
         if temp is not None:
             temp = self._clamp(attrs, temp)
             if temp != attrs.get("temperature"):
                 await self._call("set_temperature", {"entity_id": climate_id, "temperature": temp}, context)
+                self.log("auto", climate_id, action, f"{temp} °C")
 
     async def _call(self, service: str, data: dict, context: Context) -> None:
         try:

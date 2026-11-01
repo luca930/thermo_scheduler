@@ -1,6 +1,8 @@
 """API websocket usata dalla card Lovelace."""
 from __future__ import annotations
 
+import json
+
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
@@ -58,8 +60,17 @@ def _manager(hass: HomeAssistant):
     return hass.config_entries.async_entries(DOMAIN)[0].runtime_data
 
 
-def _command(name: str, schema: dict | None = None):
+def _command(name: str, schema: dict | None = None, record: bool = True):
     def wrap(func):
+        if record:
+            # ogni scrittura dalla card finisce nel registro come azione manuale
+            inner = func
+
+            async def func(hass, connection, msg):
+                await inner(hass, connection, msg)
+                detail = json.dumps({k: v for k, v in msg.items() if k not in ("id", "type")}, ensure_ascii=False)
+                _manager(hass).log("manual", msg.get("climate_id"), name, detail[:200])
+
         func = websocket_api.async_response(func)
         func = websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/{name}", **(schema or {})})(func)
         return websocket_api.require_admin(func)
@@ -67,7 +78,7 @@ def _command(name: str, schema: dict | None = None):
     return wrap
 
 
-@_command("list")
+@_command("list", record=False)
 async def ws_list(hass, connection, msg):
     connection.send_result(msg["id"], to_raw(_manager(hass).storage.data))
 
@@ -183,6 +194,13 @@ async def ws_set_preheat(hass, connection, msg):
     connection.send_result(msg["id"])
 
 
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/log", vol.Optional("limit", default=100): int})
+@websocket_api.async_response
+async def ws_log(hass, connection, msg):
+    # registro delle azioni: manuali e automatiche, più recenti in fondo
+    connection.send_result(msg["id"], _manager(hass).storage.data.log[-msg["limit"]:])
+
+
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/estimate", vol.Required("climate_id"): cv.entity_id, vol.Required("target"): vol.Coerce(float)}
 )
@@ -205,5 +223,6 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_set_room,
         ws_estimate,
         ws_set_preheat,
+        ws_log,
     ):
         websocket_api.async_register_command(hass, handler)

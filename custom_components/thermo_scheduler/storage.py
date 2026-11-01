@@ -14,6 +14,7 @@ from .core.resolve import Override
 from .core.schedule import Block, Profile
 
 STORAGE_VERSION = 1
+LOG_LIMIT = 500  # voci di registro tenute
 
 
 @dataclass
@@ -34,6 +35,7 @@ class StoreData:
     episodes: dict[str, list[Episode]] = field(default_factory=dict)
     outdoor_entity: str | None = None  # legacy, vedi _migrate_outdoor
     preheat: set[str] = field(default_factory=set)
+    log: list[dict] = field(default_factory=list)
 
 
 def profile_from_raw(raw: dict) -> Profile:
@@ -97,6 +99,7 @@ def from_raw(raw: dict) -> StoreData:
         # legacy: letta solo per migrarla nelle opzioni dell'integrazione
         outdoor_entity=raw.get("outdoor_entity"),
         preheat=set(raw.get("preheat", [])),
+        log=list(raw.get("log", []))[-LOG_LIMIT:],
     )
 
 
@@ -116,6 +119,7 @@ def to_raw(data: StoreData) -> dict:
         "rooms": {k: asdict(v) for k, v in data.rooms.items()},
         "episodes": {k: [asdict(e) for e in v] for k, v in data.episodes.items()},
         "preheat": sorted(data.preheat),
+        "log": data.log[-LOG_LIMIT:],
     }
 
 
@@ -130,3 +134,7 @@ class Storage:
 
     async def async_save(self) -> None:
         await self._store.async_save(to_raw(self.data))
+
+    def async_delay_save(self, delay: float = 5) -> None:
+        # il registro scrive spesso: raggruppa le scritture
+        self._store.async_delay_save(lambda: to_raw(self.data), delay)

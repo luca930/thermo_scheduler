@@ -1,7 +1,7 @@
 {
   "domain": "thermo_scheduler",
   "name": "Thermo Scheduler",
-  "after_dependencies": ["frontend", "http"],
+  "after_dependencies": ["frontend", "http", "logbook"],
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["websocket_api"],

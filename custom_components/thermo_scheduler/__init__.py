@@ -25,6 +25,8 @@ SERVICES = {
 def _register_services(hass: HomeAssistant) -> None:
     async def handle(call: ServiceCall) -> None:
         manager = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
+        for climate_id in call.data["entity_id"]:
+            manager.log("manual", climate_id, f"servizio {call.service}", str(call.data.get("profile_id", "")))
         try:
             for climate_id in call.data["entity_id"]:
                 if call.service == "set_profile":
