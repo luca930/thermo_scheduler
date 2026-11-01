@@ -9,6 +9,7 @@ from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .core.conditions import Action, Check, Condition
+from .core.heating import Episode, Room
 from .core.resolve import Override
 from .core.schedule import Block, Profile
 
@@ -29,6 +30,9 @@ class StoreData:
     assignments: dict[str, Assignment] = field(default_factory=dict)
     overrides: dict[str, Override] = field(default_factory=dict)
     saved_modes: dict[str, str] = field(default_factory=dict)
+    rooms: dict[str, Room] = field(default_factory=dict)
+    episodes: dict[str, list[Episode]] = field(default_factory=dict)
+    outdoor_entity: str | None = None
 
 
 def profile_from_raw(raw: dict) -> Profile:
@@ -84,6 +88,12 @@ def from_raw(raw: dict) -> StoreData:
             for k, v in raw.get("overrides", {}).items()
         },
         saved_modes=dict(raw.get("saved_modes", {})),
+        rooms={k: Room(**v) for k, v in raw.get("rooms", {}).items()},
+        episodes={
+            k: [Episode(e["start_in"], e["end_in"], e["outdoor"], e["minutes"]) for e in v]
+            for k, v in raw.get("episodes", {}).items()
+        },
+        outdoor_entity=raw.get("outdoor_entity"),
     )
 
 
@@ -100,6 +110,9 @@ def to_raw(data: StoreData) -> dict:
             for k, v in data.overrides.items()
         },
         "saved_modes": dict(data.saved_modes),
+        "rooms": {k: asdict(v) for k, v in data.rooms.items()},
+        "episodes": {k: [asdict(e) for e in v] for k, v in data.episodes.items()},
+        "outdoor_entity": data.outdoor_entity,
     }
 
 

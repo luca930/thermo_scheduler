@@ -1,6 +1,6 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
-import { api, type Block, type Condition, type Data, type Profile } from "./api";
+import { api, type Block, type Condition, type Data, type Estimate, type Profile, type Room } from "./api";
 import { t } from "./i18n";
 
 type View = "summary" | "settings" | "schedule" | "conditions";
@@ -28,6 +28,8 @@ class ThermoSchedulerCard extends LitElement {
     _scheduleDay: { state: true },
     _editIndex: { state: true },
     _modeOpen: { state: true },
+    _est: { state: true },
+    _room: { state: true },
     _error: { state: true },
   };
   static styles = css`
@@ -441,7 +443,7 @@ class ThermoSchedulerCard extends LitElement {
   `;
 
   hass: any;
-  _config: { entity?: string } = {};
+  _config: { entity?: string; outdoor_entity?: string } = {};
   _data: Data | null = null;
   _profile: Profile | null = null;
   _condition: Condition | null = null;
@@ -450,12 +452,16 @@ class ThermoSchedulerCard extends LitElement {
   _scheduleDay = todayIndex();
   _editIndex: number | null = null;
   _modeOpen = false;
+  _est: Estimate | null = null;
+  _room: Room | null = null; // bozza della sezione Casa, finché non si salva
+  private _estKey = "";
+  private _outdoorSent: string | null = null;
   _error = "";
   private _retry: (() => Promise<unknown>) | null = null;
   private _loaded = false;
 
   // la card mostra un solo termostato, scelto nella configurazione
-  setConfig(config: { entity?: string }) {
+  setConfig(config: { entity?: string; outdoor_entity?: string }) {
     if (!config?.entity?.startsWith("climate.")) {
       throw new Error("thermo-scheduler-card: imposta 'entity' con un termostato climate.*");
     }
@@ -464,6 +470,44 @@ class ThermoSchedulerCard extends LitElement {
     this._syncProfile();
   }
   getCardSize() { return 3; }
+
+  updated() {
+    if (!this._data || !this.hass) return;
+    this._syncOutdoor();
+    this._maybeEstimate();
+  }
+
+  // il sensore della temperatura esterna è nella configurazione della card; lo salva l'integrazione
+  private _syncOutdoor() {
+    const wanted = this._config.outdoor_entity ?? null;
+    if (wanted === (this._data!.outdoor_entity ?? null) || wanted === this._outdoorSent) return;
+    this._outdoorSent = wanted;
+    this._try(() => this._api.setOutdoor(wanted));
+  }
+
+  // tempo di riscaldamento per la prossima fascia; ricalcolato ogni 10 minuti o al cambio di fascia
+  private _maybeEstimate() {
+    const cid = this._selected;
+    const a = this._data!.assignments[cid];
+    const next = a ? this._nextBlock(this._data!.profiles[a.profile_id]) : null;
+    if (!next) {
+      this._est = null;
+      this._estKey = "";
+      return;
+    }
+    const bucket = Math.floor(Date.now() / 600000);
+    const key = `${cid}|${next.block.temperature}|${next.at.getTime()}|${bucket}`;
+    if (key === this._estKey) return;
+    this._estKey = key;
+    this._api
+      .estimate(cid, next.block.temperature)
+      .then((est) => {
+        if (this._estKey === key) this._est = est;
+      })
+      .catch(() => {
+        if (this._estKey === key) this._est = null;
+      });
+  }
 
   willUpdate(changed: Map<string, unknown>) {
     if (changed.has("hass") && this.hass && !this._loaded) {
@@ -497,6 +541,7 @@ class ThermoSchedulerCard extends LitElement {
   }
   _select(id: string) {
     this._selected = id;
+    this._room = null;
     this._profile = null;
     this._syncProfile();
   }
@@ -708,6 +753,7 @@ class ThermoSchedulerCard extends LitElement {
           <span class="t-label">${this._t("next")}</span>
           <span class="t-value">${prefix}${next.block.start}</span>
           <span class="t-sub">${this._fmt(next.block.temperature)}°</span>
+          ${this._estimateLine(next)}
         </span>` : nothing}
       </span>
       ${this._modeOpen && modes.length ? html`<div id="mode-picker" class="mode-picker" role="group" aria-label=${this._t("changeMode")}>
@@ -715,6 +761,59 @@ class ThermoSchedulerCard extends LitElement {
       </div>` : nothing}
       ${!a ? html`<span class="footnote">${this._t("emptySchedule")}</span>` : nothing}
     </section>`;
+  }
+
+  private _estimateLine(next: { at: Date; block: Block }) {
+    const est = this._est;
+    if (!est) return nothing;
+    if (est.minutes == null) {
+      const reasons: Record<string, string> = { inside: "noInside", outdoor: "noOutdoor", unreachable: "unreachable" };
+      return html`<span class="t-sub est-warn">${this._t(reasons[est.reason ?? "unreachable"])}</span>`;
+    }
+    const start = new Date(next.at.getTime() - est.minutes * 60000);
+    const time = start.toLocaleTimeString(this.hass?.language ?? "en", { hour: "2-digit", minute: "2-digit" });
+    // dettagli sulla stima nel titolo: la tile resta corta
+    const note = est.configured ? (est.samples ? this._t("calibrated", { x: est.samples }) : "") : this._t("genericEstimate");
+    return html`<span class="t-sub est" title=${note}>${this._t("startAt")} ${time}</span>
+      <span class="t-sub">${this._t("estMinutes", { x: est.minutes })}</span>`;
+  }
+
+  // casa: impianto, caldaia, classe energetica, metratura; servono alla stima
+  private _roomView(cid: string): Room {
+    return this._room ?? this._data!.rooms?.[cid] ?? { emitter: "radiators", boiler: "gas", energy_class: "D", area_m2: 20, height_m: 2.7 };
+  }
+  private _patchRoom(cid: string, patch: Partial<Room>) {
+    this._room = { ...this._roomView(cid), ...patch };
+  }
+  private _renderHouse(cid: string) {
+    const r = this._roomView(cid);
+    return html`<h3>${this._t("house")}</h3>
+      <div class="group tile-group">
+        <label class="row"><span>${this._t("emitter")}</span>
+          <select @change=${(e: Event) => this._patchRoom(cid, { emitter: val(e) as Room["emitter"] })}>
+            <option value="radiators" ?selected=${r.emitter === "radiators"}>${this._t("emitterRadiators")}</option>
+            <option value="floor" ?selected=${r.emitter === "floor"}>${this._t("emitterFloor")}</option>
+          </select></label>
+        <label class="row"><span>${this._t("boiler")}</span>
+          <select @change=${(e: Event) => this._patchRoom(cid, { boiler: val(e) as Room["boiler"] })}>
+            <option value="gas" ?selected=${r.boiler === "gas"}>${this._t("boilerGas")}</option>
+            <option value="heat_pump" ?selected=${r.boiler === "heat_pump"}>${this._t("boilerHeatPump")}</option>
+          </select></label>
+        <label class="row"><span>${this._t("energyClass")}</span>
+          <select @change=${(e: Event) => this._patchRoom(cid, { energy_class: val(e) as Room["energy_class"] })}>
+            ${["A", "B", "C", "D", "E", "F", "G"].map((c) => html`<option value=${c} ?selected=${r.energy_class === c}>${c}</option>`)}
+          </select></label>
+        <label class="row"><span>${this._t("area")}</span>
+          <input type="number" min="5" max="500" step="1" .value=${String(r.area_m2)} @change=${(e: Event) => this._patchRoom(cid, { area_m2: Number(val(e)) })} /></label>
+        <label class="row"><span>${this._t("height")}</span>
+          <input type="number" min="2" max="6" step="0.1" .value=${String(r.height_m)} @change=${(e: Event) => this._patchRoom(cid, { height_m: Number(val(e)) })} /></label>
+        <button class="nav" data-action="save-room" @click=${() => this._saveRoom(cid)}>${this._t("saveHouse")}</button>
+      </div>`;
+  }
+  private async _saveRoom(cid: string) {
+    const room = this._roomView(cid);
+    await this._try(() => this._api.setRoom(cid, room));
+    if (!this._error) this._room = null;
   }
 
   private _renderSettings() {
@@ -758,6 +857,7 @@ class ThermoSchedulerCard extends LitElement {
         <button class="nav" data-action="own" @click=${() => this._try(() => this._makeOwn(cid))}>${this._t("ownSchedule")}</button>
         ${others.length ? html`<p class="footnote">${this._t("sharedWith", { x: others.map((id) => this._name(id)).join(", ") })}</p>` : nothing}
       </div>
+      ${this._renderHouse(cid)}
       ${a ? html`<div class="group">
         <button class="nav danger" @click=${() => this._try(() => this._api.unassign(cid))}>${this._t("unassign")}</button>
       </div>` : nothing}`;

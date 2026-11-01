@@ -27,10 +27,27 @@ export interface Assignment {
   condition_ids: string[];
   enabled: boolean;
 }
+export interface Room {
+  emitter: "radiators" | "floor";
+  boiler: "gas" | "heat_pump";
+  energy_class: "A" | "B" | "C" | "D" | "E" | "F" | "G";
+  area_m2: number;
+  height_m: number;
+}
+export interface Estimate {
+  minutes: number | null;
+  configured: boolean;
+  samples: number;
+  inside: number | null;
+  outdoor: number | null;
+  reason: "inside" | "outdoor" | "unreachable" | null;
+}
 export interface Data {
   profiles: Record<string, Profile>;
   conditions: Record<string, Condition>;
   assignments: Record<string, Assignment>;
+  rooms?: Record<string, Room>;
+  outdoor_entity?: string | null;
 }
 
 type Call = (msg: { type: string; [key: string]: unknown }) => Promise<unknown>;
@@ -46,4 +63,8 @@ export const api = (call: Call) => ({
     call({ type: "thermo_scheduler/assign", climate_id, profile_id, ...extra }),
   unassign: (climate_id: string) => call({ type: "thermo_scheduler/unassign", climate_id }),
   clearOverride: (climate_id: string) => call({ type: "thermo_scheduler/clear_override", climate_id }),
+  setRoom: (climate_id: string, room: Room) => call({ type: "thermo_scheduler/set_room", climate_id, room }),
+  setOutdoor: (entity_id: string | null) => call({ type: "thermo_scheduler/set_outdoor", entity_id }),
+  estimate: (climate_id: string, target: number) =>
+    call({ type: "thermo_scheduler/estimate", climate_id, target }) as Promise<Estimate>,
 });

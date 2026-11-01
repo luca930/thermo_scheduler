@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
+from .core.heating import BOILERS, EMITTERS, ENERGY_CLASSES, Room
 from .storage import (
     Assignment,
     condition_from_raw,
@@ -46,6 +47,17 @@ CONDITION = vol.Schema(
         vol.Required("match"): vol.In(["all", "any"]),
         vol.Required("delay"): vol.All(int, vol.Range(min=0)),
         vol.Required("action"): ACTION,
+    }
+)
+
+
+ROOM = vol.Schema(
+    {
+        vol.Required("emitter"): vol.In(EMITTERS),
+        vol.Required("boiler"): vol.In(BOILERS),
+        vol.Required("energy_class"): vol.In(ENERGY_CLASSES),
+        vol.Required("area_m2"): vol.Coerce(float),
+        vol.Required("height_m"): vol.Coerce(float),
     }
 )
 
@@ -155,6 +167,37 @@ async def ws_clear_override(hass, connection, msg):
     connection.send_result(msg["id"])
 
 
+@_command("set_room", {vol.Required("climate_id"): cv.entity_id, vol.Required("room"): ROOM})
+async def ws_set_room(hass, connection, msg):
+    manager = _manager(hass)
+    try:
+        room = Room(**msg["room"])
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_room", str(err))
+        return
+    manager.storage.data.rooms[msg["climate_id"]] = room
+    await manager.storage.async_save()
+    await manager.async_refresh(msg["climate_id"])
+    connection.send_result(msg["id"])
+
+
+@_command("set_outdoor", {vol.Required("entity_id"): vol.Any(None, cv.entity_id)})
+async def ws_set_outdoor(hass, connection, msg):
+    manager = _manager(hass)
+    manager.storage.data.outdoor_entity = msg["entity_id"] or None
+    await manager.storage.async_save()
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/estimate", vol.Required("climate_id"): cv.entity_id, vol.Required("target"): vol.Coerce(float)}
+)
+@websocket_api.async_response
+async def ws_estimate(hass, connection, msg):
+    # lettura: non richiede amministratore, così la card funziona per tutti gli utenti
+    connection.send_result(msg["id"], _manager(hass).estimate(msg["climate_id"], msg["target"]))
+
+
 def async_register_commands(hass: HomeAssistant) -> None:
     for handler in (
         ws_list,
@@ -165,5 +208,8 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_assign,
         ws_unassign,
         ws_clear_override,
+        ws_set_room,
+        ws_set_outdoor,
+        ws_estimate,
     ):
         websocket_api.async_register_command(hass, handler)

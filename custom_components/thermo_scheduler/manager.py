@@ -13,12 +13,23 @@ from homeassistant.helpers.event import async_track_point_in_time, async_track_s
 from homeassistant.util import dt as dt_util
 
 from .core.conditions import Condition, evaluate
+from .core.heating import Room, calibration, minutes_to_target
 from .core.resolve import Override, Target, resolve
 from .core.schedule import next_change
+from .learning import HeatingLearner
 from .storage import Assignment, Storage
 
 _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE = ("unavailable", "unknown")
+MAX_EPISODES = 60  # cicli di riscaldamento tenuti per climate
+
+
+def _estimate_reason(t_in, t_out, minutes) -> str | None:
+    if t_in is None:
+        return "inside"
+    if t_out is None:
+        return "outdoor"
+    return None if minutes is not None else "unreachable"
 
 
 class Manager:
@@ -34,6 +45,7 @@ class Manager:
         self._unsub_cond: CALLBACK_TYPE | None = None
         self._cond_tracked: tuple[str, ...] = ()
         self._listeners: list[Callable[[], None]] = []
+        self._learner = HeatingLearner()
 
     @property
     def _saved_mode(self) -> dict[str, str]:
@@ -144,10 +156,56 @@ class Manager:
         old, new = event.data["old_state"], event.data["new_state"]
         if new is None or new.state in UNAVAILABLE:
             return
+        await self._learn(cid, new)
         if old is None or old.state in UNAVAILABLE:
             await self.async_refresh(cid)
         elif new.context.id not in self.own_context_ids and self._is_manual(cid, old, new):
             await self._set_override(cid, new)
+
+    def _outdoor_temp(self) -> float | None:
+        entity = self.storage.data.outdoor_entity
+        state = self.hass.states.get(entity) if entity else None
+        if state is None or state.state in UNAVAILABLE:
+            return None
+        try:
+            return float(state.state)
+        except ValueError:
+            return None
+
+    async def _learn(self, climate_id: str, new) -> None:
+        episode = self._learner.observe(
+            climate_id,
+            new.state,
+            new.attributes.get("current_temperature"),
+            new.attributes.get("temperature"),
+            self._outdoor_temp(),
+        )
+        if episode is None:
+            return
+        history = self.storage.data.episodes.setdefault(climate_id, [])
+        history.append(episode)
+        del history[:-MAX_EPISODES]
+        await self.storage.async_save()
+
+    def estimate(self, climate_id: str, target: float) -> dict:
+        """Minuti per arrivare a `target` con i dati attuali e lo storico del climate."""
+        data = self.storage.data
+        room = data.rooms.get(climate_id)
+        state = self.hass.states.get(climate_id)
+        t_in = state.attributes.get("current_temperature") if state else None
+        t_out = self._outdoor_temp()
+        factor, samples = calibration(room or Room(), data.episodes.get(climate_id, []))
+        minutes = None
+        if t_in is not None and t_out is not None:
+            minutes = minutes_to_target(room or Room(), t_in, target, t_out, factor)
+        return {
+            "minutes": None if minutes is None else round(minutes),
+            "configured": room is not None,
+            "samples": samples,
+            "inside": t_in,
+            "outdoor": t_out,
+            "reason": _estimate_reason(t_in, t_out, minutes),
+        }
 
     @staticmethod
     def _clamp(attrs, temp: float) -> float:
