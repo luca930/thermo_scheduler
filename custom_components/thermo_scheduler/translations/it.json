@@ -2,5 +2,30 @@
   "config": {
     "step": {"user": {"title": "Thermo Scheduler", "description": "Configura Thermo Scheduler. Programmazioni e condizioni si gestiscono dalla card."}},
     "abort": {"single_instance_allowed": "È consentita una sola istanza."}
+  },
+  "services": {
+    "set_profile": {
+      "name": "Imposta programmazione",
+      "description": "Assegna una programmazione a un termostato.",
+      "fields": {
+        "entity_id": {"name": "Termostato", "description": "L'entità climate."},
+        "profile_id": {"name": "ID programmazione", "description": "ID della programmazione da assegnare."}
+      }
+    },
+    "clear_override": {
+      "name": "Annulla override",
+      "description": "Elimina l'override manuale e torna alla programmazione.",
+      "fields": {"entity_id": {"name": "Termostato", "description": "L'entità climate."}}
+    },
+    "enable": {
+      "name": "Attiva",
+      "description": "Riprende la programmazione di un termostato.",
+      "fields": {"entity_id": {"name": "Termostato", "description": "L'entità climate."}}
+    },
+    "disable": {
+      "name": "Disattiva",
+      "description": "Sospende la programmazione senza rimuovere l'assegnazione.",
+      "fields": {"entity_id": {"name": "Termostato", "description": "L'entità climate."}}
+    }
   }
 }

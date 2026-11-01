@@ -31,10 +31,13 @@ class Manager:
         self._tracked: tuple[str, ...] = ()
         self._active: dict[str, Condition] = {}
         self._pending: dict[tuple[str, str], CALLBACK_TYPE] = {}
-        self._saved_mode: dict[str, str] = {}
         self._unsub_cond: CALLBACK_TYPE | None = None
         self._cond_tracked: tuple[str, ...] = ()
         self._listeners: list[Callable[[], None]] = []
+
+    @property
+    def _saved_mode(self) -> dict[str, str]:
+        return self.storage.data.saved_modes
 
     def async_add_listener(self, callback: Callable[[], None]) -> CALLBACK_TYPE:
         self._listeners.append(callback)
@@ -245,6 +248,7 @@ class Manager:
         state = self.hass.states.get(climate_id)
         if cond.action.kind == "off" and state and state.state not in (*UNAVAILABLE, "off"):
             self._saved_mode[climate_id] = state.state
+            await self.storage.async_save()
         self._active[climate_id] = cond
         if self.storage.data.overrides.pop(climate_id, None) is not None:
             await self.storage.async_save()
@@ -253,6 +257,8 @@ class Manager:
     async def _deactivate(self, climate_id: str) -> None:
         self._active.pop(climate_id, None)
         mode = self._saved_mode.pop(climate_id, None)
+        if mode:
+            await self.storage.async_save()
         state = self.hass.states.get(climate_id)
         # ponytail: se la fascia non impone una modalità, rimette quella che il climate aveva prima di `off`
         if (

@@ -28,6 +28,7 @@ class StoreData:
     conditions: dict[str, Condition] = field(default_factory=dict)
     assignments: dict[str, Assignment] = field(default_factory=dict)
     overrides: dict[str, Override] = field(default_factory=dict)
+    saved_modes: dict[str, str] = field(default_factory=dict)
 
 
 def profile_from_raw(raw: dict) -> Profile:
@@ -82,6 +83,7 @@ def from_raw(raw: dict) -> StoreData:
             k: Override(datetime.fromisoformat(v["until"]), v.get("temperature"), v.get("hvac_mode"))
             for k, v in raw.get("overrides", {}).items()
         },
+        saved_modes=dict(raw.get("saved_modes", {})),
     )
 
 
@@ -97,6 +99,7 @@ def to_raw(data: StoreData) -> dict:
             k: {"until": v.until.isoformat(), "temperature": v.temperature, "hvac_mode": v.hvac_mode}
             for k, v in data.overrides.items()
         },
+        "saved_modes": dict(data.saved_modes),
     }
 
 

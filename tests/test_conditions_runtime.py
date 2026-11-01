@@ -113,6 +113,17 @@ async def test_unavailable_entity_at_startup_does_not_block(hass, hass_storage, 
     assert mode_calls == []
 
 
+async def test_restart_while_blocked_still_restores_mode(hass, hass_storage, freezer):
+    _, mode_calls = await blocked_setup(hass, hass_storage, freezer)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    await advance(hass, freezer, 240)
+    hass.states.async_set(WINDOW, "off")
+    await hass.async_block_till_done()
+    assert mode_calls[-1].data["hvac_mode"] == "heat"
+
+
 async def test_condition_scoped_to_single_climate(hass, hass_storage, freezer):
     hass.states.async_set(WINDOW, "off")
     hass.states.async_set(KITCHEN, "heat", ATTRS)
