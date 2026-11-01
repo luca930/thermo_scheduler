@@ -7,6 +7,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import DOMAIN
 from .manager import Manager
 from .storage import Storage
+from .websocket_api import async_register_commands
 
 PLATFORMS = ["sensor"]
 ENTITY = {vol.Required("entity_id"): cv.entity_ids}
@@ -44,6 +45,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await manager.async_start()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _register_services(hass)
+    async_register_commands(hass)
     return True
 
 

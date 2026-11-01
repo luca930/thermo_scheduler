@@ -57,6 +57,17 @@ class Manager:
         await self.storage.async_save()
         await self.async_refresh()
 
+    async def async_unassign(self, climate_id: str) -> None:
+        data = self.storage.data
+        data.assignments.pop(climate_id, None)
+        data.overrides.pop(climate_id, None)
+        self._active.pop(climate_id, None)
+        self._saved_mode.pop(climate_id, None)
+        for key in [k for k in self._pending if k[0] == climate_id]:
+            self._pending.pop(key)()
+        await self.storage.async_save()
+        await self.async_refresh()
+
     async def async_set_enabled(self, climate_id: str, enabled: bool) -> None:
         assignment = self.storage.data.assignments.get(climate_id)
         if assignment is None:
