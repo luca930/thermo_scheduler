@@ -1,0 +1,14 @@
+{
+  "domain": "thermo_scheduler",
+  "name": "Thermo Scheduler",
+  "codeowners": [],
+  "config_flow": true,
+  "single_config_entry": true,
+  "dependencies": [],
+  "documentation": "https://github.com/OWNER/thermo_scheduler",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/OWNER/thermo_scheduler/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
