@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { api, type Block, type Condition, type Data, type Profile } from "./api";
 import { t } from "./i18n";
 
@@ -39,6 +40,7 @@ class ThermoSchedulerCard extends LitElement {
       --ts-sep: var(--divider-color, rgba(128, 128, 128, 0.25));
       --ts-group: color-mix(in srgb, var(--card-background-color, #fff) 94%, var(--ts-ink) 6%);
       --ts-tile: color-mix(in srgb, var(--card-background-color, #fff) 90%, var(--ts-ink) 10%);
+      --ts-ease: cubic-bezier(0.32, 0.72, 0, 1);
       display: block;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
       font-variant-numeric: tabular-nums;
@@ -56,7 +58,16 @@ class ThermoSchedulerCard extends LitElement {
       margin: 16px 4px 0;
     }
     .group { background: var(--ts-group); border-radius: 24px; overflow: hidden; }
-    .group > * + * { border-top: 0.5px solid var(--ts-sep); }
+    .group > * { position: relative; }
+    .group > * + *::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 16px;
+      right: 0;
+      height: 0.5px;
+      background: var(--ts-sep);
+    }
     .row {
       display: flex;
       align-items: center;
@@ -90,10 +101,11 @@ class ThermoSchedulerCard extends LitElement {
       color: var(--ts-accent);
       font-weight: 500;
       cursor: pointer;
-      transition: background-color 200ms ease, transform 150ms ease, opacity 200ms ease;
+      transition: background-color 250ms var(--ts-ease), transform 120ms var(--ts-ease), opacity 200ms var(--ts-ease);
+      -webkit-tap-highlight-color: transparent;
     }
-    button:active { transform: scale(0.98); }
-    button:hover { opacity: 0.85; }
+    button:active { transform: scale(0.97); }
+    @media (hover: hover) { button:hover { opacity: 0.9; } }
     button.primary { background: var(--ts-accent); color: #fff; font-weight: 600; }
     button.danger { color: var(--ts-danger); }
     button.wide { width: 100%; }
@@ -167,10 +179,11 @@ class ThermoSchedulerCard extends LitElement {
       background: var(--ts-tile);
       color: var(--ts-ink);
       text-align: center;
-      transition: background-color 250ms ease;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+      transition: background-color 250ms var(--ts-ease);
     }
     .hero:hover { opacity: 1; }
-    .hero-top { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; text-align: left; }
+    .hero-top { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; text-align: left; }
     .hero-top .hero-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hero-top ha-icon { color: var(--ts-ink2); }
 
@@ -214,7 +227,7 @@ class ThermoSchedulerCard extends LitElement {
       align-items: center;
       justify-content: center;
     }
-    .num { display: inline-flex; align-items: flex-start; font-size: 64px; line-height: 64px; font-weight: 300; letter-spacing: -0.02em; }
+    .num { display: inline-flex; align-items: flex-start; font-size: 64px; line-height: 64px; font-weight: 300; letter-spacing: -0.03em; }
     .num sup { font-size: 26px; vertical-align: top; position: relative; top: -4px; margin-left: 1px; }
     .deg { font-size: 26px; line-height: 1; margin: 6px 0 0 4px; font-weight: 300; }
     .dial-mode { margin-top: 2px; font-size: 15px; color: var(--tone); font-weight: 600; }
@@ -382,6 +395,12 @@ class ThermoSchedulerCard extends LitElement {
 
     .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 16px; text-align: center; color: var(--ts-ink2); }
     .empty ha-icon { --mdc-icon-size: 36px; }
+
+    @keyframes ts-enter {
+      from { opacity: 0; transform: translateX(16px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .view-in { animation: ts-enter 250ms var(--ts-ease) both; }
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -574,7 +593,7 @@ class ThermoSchedulerCard extends LitElement {
         <span>${this._error}</span>
         <button class="pill" @click=${() => this._retry && this._try(this._retry)}>${this._t("retry")}</button>
       </div>` : nothing}
-      ${this._renderView()}
+      ${keyed(this._view, html`<div class="view-in">${this._renderView()}</div>`)}
     </div>`;
   }
 
