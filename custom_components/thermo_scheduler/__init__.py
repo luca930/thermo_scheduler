@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import voluptuous as vol
@@ -40,6 +41,9 @@ def _register_services(hass: HomeAssistant) -> None:
 
 
 CARD_URL = f"/{DOMAIN}/thermo-scheduler-card.js"
+# la versione nell'URL fa ricaricare la card dopo ogni aggiornamento, senza cache vecchie
+CARD_VERSION = json.loads((Path(__file__).parent / "manifest.json").read_text(encoding="utf-8"))["version"]
+CARD_JS_URL = f"{CARD_URL}?v={CARD_VERSION}"
 
 
 async def _register_card(hass: HomeAssistant) -> None:
@@ -54,7 +58,7 @@ async def _register_card(hass: HomeAssistant) -> None:
     hass.data[f"{DOMAIN}_card"] = True
     path = Path(__file__).parent / "www" / "thermo-scheduler-card.js"
     await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(path), False)])
-    add_extra_js_url(hass, CARD_URL)
+    add_extra_js_url(hass, CARD_JS_URL)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
