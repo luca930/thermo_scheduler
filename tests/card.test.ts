@@ -82,7 +82,7 @@ describe("thermo-scheduler-card", () => {
     await click(el, "[data-climate]");
     await click(el, '[data-action="open-schedule"]');
     expect(el.shadowRoot.querySelector('input[type="time"]')).toBeNull();
-    await click(el, ".week button:nth-child(1)"); // lunedì
+    await click(el, ".tabs button:nth-child(1)"); // lunedì
     await click(el, ".slot");
     expect(el.shadowRoot.querySelector('input[type="time"]').value).toBe("06:30");
   });

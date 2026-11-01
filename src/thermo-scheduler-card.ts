@@ -38,6 +38,7 @@ class ThermoSchedulerCard extends LitElement {
       --ts-ink2: var(--secondary-text-color, #6e6e73);
       --ts-sep: var(--divider-color, rgba(128, 128, 128, 0.25));
       --ts-group: color-mix(in srgb, var(--card-background-color, #fff) 94%, var(--ts-ink) 6%);
+      --ts-tile: color-mix(in srgb, var(--card-background-color, #fff) 90%, var(--ts-ink) 10%);
       display: block;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
       font-variant-numeric: tabular-nums;
@@ -54,7 +55,7 @@ class ThermoSchedulerCard extends LitElement {
       color: var(--ts-ink2);
       margin: 16px 4px 0;
     }
-    .group { background: var(--ts-group); border-radius: 16px; overflow: hidden; }
+    .group { background: var(--ts-group); border-radius: 24px; overflow: hidden; }
     .group > * + * { border-top: 0.5px solid var(--ts-sep); }
     .row {
       display: flex;
@@ -154,28 +155,101 @@ class ThermoSchedulerCard extends LitElement {
     .banner span { flex: 1; }
     .banner ha-icon { color: var(--ts-danger); }
 
-    /* riepilogo: una card che apre le impostazioni */
-    .summary {
+    /* riepilogo: hero con quadrante ad arco, pillola di stato e tile */
+    .hero {
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      gap: 4px;
+      gap: 16px;
       width: 100%;
-      min-height: 0;
-      padding: 16px;
+      padding: 16px 16px 20px;
+      border-radius: 28px;
+      background: var(--ts-tile);
+      color: var(--ts-ink);
+      text-align: center;
+      transition: background-color 250ms ease;
+    }
+    .hero:hover { opacity: 1; }
+    .hero-top { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; text-align: left; }
+    .hero-top .hero-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hero-top ha-icon { color: var(--ts-ink2); }
+
+    .dial {
+      position: relative;
+      display: block;
+      width: min(220px, 70vw);
+      aspect-ratio: 1;
+      margin: 4px auto;
+      --p: 0;
+    }
+    .ring, .knob-wrap {
+      position: absolute;
+      inset: 0;
+    }
+    .ring {
+      border-radius: 50%;
+      background: conic-gradient(var(--tone) calc(var(--p) * 270deg), var(--ts-sep) 0);
+      transform: rotate(135deg);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 13px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 13px));
+      transition: background 250ms ease;
+    }
+    .knob-wrap { transform: rotate(calc(135deg + var(--p) * 270deg)); transition: transform 250ms ease; }
+    .knob {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      margin: -10px 0 0 -10px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 4px var(--tone), 0 1px 3px rgba(0, 0, 0, 0.25);
+    }
+    .dial-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .num { display: inline-flex; align-items: flex-start; font-size: 64px; line-height: 64px; font-weight: 300; letter-spacing: -0.02em; }
+    .num sup { font-size: 26px; vertical-align: top; position: relative; top: -4px; margin-left: 1px; }
+    .deg { font-size: 26px; line-height: 1; margin: 6px 0 0 4px; font-weight: 300; }
+    .dial-mode { margin-top: 2px; font-size: 15px; color: var(--tone); font-weight: 600; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      align-self: center;
+      min-height: 36px;
+      padding: 0 16px;
+      border-radius: 18px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .status-pill { background: color-mix(in srgb, var(--tone) 14%, transparent); color: var(--tone); }
+    .status-pill ha-icon { color: var(--tone); }
+
+    .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; }
+    .tile {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-height: 84px;
+      padding: 12px 14px;
       border-radius: 20px;
       background: var(--ts-group);
-      text-align: left;
-      color: var(--ts-ink);
     }
-    .summary:hover { opacity: 1; background: color-mix(in srgb, var(--ts-group) 92%, var(--ts-ink) 8%); }
-    .sum-top { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; }
-    .sum-top span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .sum-temp { font-size: 56px; line-height: 60px; font-weight: 300; margin-top: 8px; }
-    .sum-temp small { font-size: 28px; vertical-align: top; margin-left: 2px; }
-    .status-text { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--tone, var(--ts-ink)); }
-    .status-text ha-icon { color: var(--tone); }
-    .next { font-size: 15px; color: var(--ts-ink2); margin-top: 4px; }
+    .tile ha-icon { margin-bottom: 4px; }
+    .mode-tile { background: color-mix(in srgb, var(--tone) 16%, var(--ts-group)); }
+    .mode-tile ha-icon, .mode-tile .t-value { color: var(--tone); }
+    .t-label { font-size: 13px; color: var(--ts-ink2); }
+    .t-value { font-size: 17px; font-weight: 600; }
+    .t-sub { font-size: 15px; color: var(--ts-ink2); }
 
     /* barra superiore con indietro */
     .topbar { display: flex; align-items: center; gap: 8px; min-height: 44px; }
@@ -187,47 +261,115 @@ class ThermoSchedulerCard extends LitElement {
     .status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 4px; }
     .nav { width: 100%; justify-content: space-between; text-align: left; border-radius: 0; background: transparent; color: var(--ts-ink); font-weight: 400; padding: 8px 16px; }
     .nav .value { color: var(--ts-ink2); font-size: 15px; }
-    .stack { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; }
+    .stack { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; }
     .stack select { width: 100%; padding: 0; background: transparent; font-size: 17px; text-align: left; }
 
-    /* programmazione: giorni e fasce */
-    .week {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 2px;
-      padding: 2px;
-      border-radius: 10px;
-      background: light-dark(#e9e9eb, #1c1c1e);
-      min-height: 0;
-    }
-    .week button, .seg button {
+    /* programmazione: tab dei giorni, fasce come card, chip colorato */
+    .tabs { display: grid; grid-template-columns: repeat(7, 1fr); }
+    .tab {
       min-width: 0;
-      min-height: 36px;
+      min-height: 44px;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--ts-ink2);
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: inset 0 -2px 0 var(--ts-sep);
+    }
+    .tab[aria-pressed="true"] { color: var(--ts-accent); font-weight: 600; box-shadow: inset 0 -3px 0 var(--ts-accent); }
+    .slots { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .slot {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      min-height: 64px;
+      padding: 10px 16px;
+      border-radius: 20px;
+      background: var(--ts-tile);
+      color: var(--ts-ink);
+      font-weight: 400;
+      text-align: left;
+    }
+    .slot .chip {
+      min-width: 64px;
+      padding: 6px 12px;
+      border-radius: 14px;
+      text-align: center;
+      font-size: 16px;
+      font-weight: 600;
+      background: color-mix(in srgb, var(--tone) 16%, transparent);
+      color: var(--tone);
+    }
+    .slot .mode { flex: 1; min-width: 0; color: var(--ts-ink2); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .slot time { font-size: 20px; font-weight: 500; }
+    .slot ha-icon { color: var(--ts-ink2); }
+    .add-pill {
+      width: 100%;
+      min-height: 52px;
+      border-radius: 26px;
+      background: transparent;
+      box-shadow: inset 0 0 0 1px var(--ts-sep);
+      color: var(--ts-accent);
+      font-weight: 600;
+    }
+    .actions button.ghost { background: transparent; box-shadow: inset 0 0 0 1px var(--ts-sep); color: var(--ts-ink); }
+    .actions button.primary { min-height: 52px; border-radius: 26px; }
+
+    /* editor fascia: quadrante di temperatura e ora grande */
+    .hero-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 24px 16px;
+      border-radius: 28px;
+      background: color-mix(in srgb, var(--tone) 12%, var(--ts-tile));
+      --tone: var(--ts-heat);
+    }
+    .hero-slot.tone-cool { --tone: var(--ts-cool); }
+    .stepper { display: flex; align-items: center; gap: 16px; }
+    .stepper .big { min-width: 120px; text-align: center; font-size: 44px; font-weight: 300; }
+    .round {
+      width: 56px;
+      height: 56px;
+      min-width: 56px;
+      padding: 0;
+      border-radius: 50%;
+      background: var(--ts-tile);
+      font-size: 26px;
+      line-height: 1;
+      color: var(--ts-ink);
+    }
+    .time-field { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .big-time {
+      min-height: 52px;
+      font-size: 34px;
+      font-weight: 300;
+      background: transparent;
+      text-align: center;
+      padding: 0 8px;
+    }
+    .tile-group { overflow: visible; background: var(--ts-tile); }
+
+    .seg button {
+      min-width: 0;
+      min-height: 40px;
       padding: 0;
       font-size: 13px;
       font-weight: 500;
-      border-radius: 8px;
+      border-radius: 14px;
       background: transparent;
       color: var(--ts-ink);
     }
-    .week button[aria-pressed="true"], .seg button[aria-pressed="true"] {
+    .seg button[aria-pressed="true"] {
       background: var(--card-background-color, #fff);
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
       color: var(--ts-accent);
       font-weight: 600;
     }
-    .slot { width: 100%; min-height: 56px; justify-content: flex-start; padding: 8px 16px; border-radius: 0; background: transparent; color: var(--ts-ink); font-weight: 400; }
-    .slot .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex-shrink: 0; }
-    .slot time { font-size: 17px; font-weight: 600; min-width: 56px; }
-    .slot .mode { flex: 1; color: var(--ts-ink2); font-size: 15px; }
-    .slot .temp { font-weight: 600; font-size: 17px; }
-    .add { width: 100%; border-radius: 0; background: transparent; }
-    .actions { display: flex; gap: 8px; }
-    .actions button { flex: 1; }
-    .stepper { display: inline-flex; align-items: center; gap: 4px; }
-    .stepper button { min-width: 44px; font-size: 22px; line-height: 1; }
-    .stepper output { min-width: 64px; text-align: center; font-size: 17px; font-weight: 600; }
-    .seg { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 2px; margin: 12px 16px 4px; border-radius: 10px; background: light-dark(#e9e9eb, #1c1c1e); }
+    .seg { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding: 12px; background: transparent; }
     .editor { display: flex; flex-direction: column; gap: 12px; }
     .editor input[type="text"], .editor input:not([type]) { flex: 1; width: 100%; }
     .switch-row { display: flex; align-items: center; gap: 8px; }
@@ -445,22 +587,57 @@ class ThermoSchedulerCard extends LitElement {
     }
   }
 
-  // riepilogo: stato, temperatura target e prossima fascia. Un tocco apre le impostazioni
+  // temperatura spezzata in parte intera e decimale, per mostrare il decimale in apice
+  private _tempParts(v: number) {
+    const parts = new Intl.NumberFormat(this.hass?.language ?? "en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).formatToParts(v);
+    const int = parts.filter((x) => x.type === "integer" || x.type === "group" || x.type === "minusSign").map((x) => x.value).join("");
+    const dec = parts.filter((x) => x.type === "decimal" || x.type === "fraction").map((x) => x.value).join("");
+    return { int, dec };
+  }
+  private _modeLabel(cid: string) {
+    const h = this._hvac(cid);
+    return h === "cool" ? this._t("cooling") : h === "heat" ? this._t("heating") : this._t("off");
+  }
+
+  // riepilogo: quadrante con la temperatura target, stato, modalità e prossima fascia.
+  // Un tocco sull'intera card apre le impostazioni.
   private _renderSummary() {
     const cid = this._selected;
     const a = this._data!.assignments[cid];
     const info = this._statusInfo(cid);
     const temp = this._targetTemp(cid);
+    const parts = temp == null ? null : this._tempParts(temp);
+    const pct = temp == null ? 0 : Math.min(1, Math.max(0, (temp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)));
     const next = a ? this._nextBlock(this._data!.profiles[a.profile_id]) : null;
     const names = this._dayNames();
     const prefix = next ? (next.k === 0 ? "" : next.k === 1 ? `${this._t("tomorrow")} ` : `${names[next.wd]} `) : "";
-    return html`<button class="summary tone-${info.tone}" data-climate=${cid} aria-label=${`${this._name(cid)}: ${info.text}`}
+    const hvac = this._hvac(cid);
+    const hvacTone = hvac === "cool" ? "cool" : hvac === "heat" ? "heat" : "off";
+    return html`<button class="hero tone-${hvacTone}" data-climate=${cid} aria-label=${`${this._name(cid)}: ${info.text}`}
         @click=${() => this._go("settings")}>
-      <span class="sum-top"><span>${this._name(cid)}</span><ha-icon icon="mdi:chevron-right"></ha-icon></span>
-      <span class="sum-temp" aria-label=${this._t("target")}>${temp == null ? "–" : this._fmt(temp)}<small>°</small></span>
-      <span class="status-text tone-${info.tone}"><ha-icon icon=${info.icon}></ha-icon>${info.text}</span>
-      ${!a ? html`<span class="next">${this._t("emptySchedule")}</span>` : nothing}
-      ${next ? html`<span class="next">${this._t("next")} ${prefix}${next.block.start} · ${this._fmt(next.block.temperature)}°</span>` : nothing}
+      <span class="hero-top"><span class="hero-name">${this._name(cid)}</span><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+      <span class="dial" style="--p: ${pct}" role="img" aria-label=${`${this._t("target")} ${temp == null ? "–" : this._fmt(temp)} °`}>
+        <span class="ring"></span>
+        <span class="knob-wrap"><span class="knob"></span></span>
+        <span class="dial-center">
+          <span class="num">${parts ? parts.int : "–"}${parts && parts.dec ? html`<sup>${parts.dec}</sup>` : nothing}<span class="deg">°</span></span>
+          <span class="dial-mode">${this._modeLabel(cid)}</span>
+        </span>
+      </span>
+      <span class="pill status-pill tone-${info.tone}"><ha-icon icon=${info.icon}></ha-icon>${info.text}</span>
+      <span class="tiles">
+        <span class="tile mode-tile">
+          <ha-icon icon=${hvac === "cool" ? "mdi:snowflake" : "mdi:fire"}></ha-icon>
+          <span class="t-label">${this._t("mode")}</span>
+          <span class="t-value">${this._modeLabel(cid)}</span>
+        </span>
+        ${next ? html`<span class="tile">
+          <span class="t-label">${this._t("next")}</span>
+          <span class="t-value">${prefix}${next.block.start}</span>
+          <span class="t-sub">${this._fmt(next.block.temperature)}°</span>
+        </span>` : nothing}
+      </span>
+      ${!a ? html`<span class="footnote">${this._t("emptySchedule")}</span>` : nothing}
     </button>`;
   }
 
@@ -532,22 +709,21 @@ class ThermoSchedulerCard extends LitElement {
         <button class="back" aria-label=${this._t("back")} @click=${() => this._back()}><ha-icon icon="mdi:chevron-left"></ha-icon>${this._t("back")}</button>
         <h2>${p.name}</h2><span class="spacer"></span>
       </div>
-      <div class="week" role="group" aria-label=${this._t("days")}>
-        ${DAYS.map((d) => html`<button type="button" aria-pressed=${d === day} @click=${() => (this._scheduleDay = d)}>${names[d]}</button>`)}
+      <div class="tabs" role="group" aria-label=${this._t("days")}>
+        ${DAYS.map((d) => html`<button type="button" class="tab" aria-pressed=${d === day} @click=${() => (this._scheduleDay = d)}>${names[d]}</button>`)}
       </div>
-      <div class="group">
+      <div class="slots">
         ${rows.length ? rows.map(({ block, i }) => html`<button class="slot tone-${this._blockTone(block)}" @click=${() => (this._editIndex = i)}>
-          <i class="dot"></i>
+          <span class="chip">${this._fmt(block.temperature)}°</span>
+          <span class="mode">${block.hvac_mode ?? this._dayList(block.days)}</span>
           <time datetime=${block.start}>${block.start}</time>
-          <span class="mode">${block.hvac_mode ?? ""}</span>
-          <span class="temp">${this._fmt(block.temperature)}°</span>
           <ha-icon icon="mdi:chevron-right"></ha-icon>
         </button>`) : html`<p class="footnote">${this._t("noBlocksDay")}</p>`}
-        <button class="add" @click=${() => this._addBlock()}>${this._t("addBlock")}</button>
+        <button class="add-pill" @click=${() => this._addBlock()}><ha-icon icon="mdi:plus"></ha-icon>${this._t("addBlock")}</button>
       </div>
       <div class="actions">
         <button class="primary" data-action="save-profile" @click=${() => this._saveProfile()}>${this._t("save")}</button>
-        <button @click=${() => this._back()}>${this._t("cancel")}</button>
+        <button class="ghost" @click=${() => this._back()}>${this._t("cancel")}</button>
       </div>`;
   }
 
@@ -564,7 +740,18 @@ class ThermoSchedulerCard extends LitElement {
         <h2>${this._t("slot")}</h2><span class="spacer"></span>
       </div>
       <div class="editor">
-        <div class="group">
+        <div class="hero-slot tone-${this._blockTone(b)}">
+          <div class="stepper">
+            <button type="button" class="round" aria-label=${this._t("lower")} @click=${() => this._stepTemp(i, -TEMP_STEP)}>−</button>
+            <output class="big" aria-live="polite">${this._fmt(b.temperature)}°</output>
+            <button type="button" class="round" aria-label=${this._t("raise")} @click=${() => this._stepTemp(i, TEMP_STEP)}>+</button>
+          </div>
+          <label class="time-field">
+            <span class="caption">${this._t("start")}</span>
+            <input type="time" class="big-time" .value=${b.start} @input=${(e: Event) => this._patchProfile((x) => (x.blocks[i].start = val(e)))} />
+          </label>
+        </div>
+        <div class="group tile-group">
           <div class="seg" role="group" aria-label=${this._t("days")}>
             ${DAYS.map((d) => html`<button type="button" aria-pressed=${b.days.includes(d)}
               @click=${() => this._patchProfile((x) => {
@@ -572,18 +759,6 @@ class ThermoSchedulerCard extends LitElement {
                 set.has(d) ? set.delete(d) : set.add(d);
                 x.blocks[i].days = [...set].sort();
               })}>${names[d]}</button>`)}
-          </div>
-          <label class="row">
-            <span>${this._t("start")}</span>
-            <input type="time" .value=${b.start} @input=${(e: Event) => this._patchProfile((x) => (x.blocks[i].start = val(e)))} />
-          </label>
-          <div class="row">
-            <span>${this._t("temperature")}</span>
-            <div class="stepper">
-              <button type="button" aria-label=${this._t("lower")} @click=${() => this._stepTemp(i, -TEMP_STEP)}>−</button>
-              <output aria-live="polite">${this._fmt(b.temperature)}°</output>
-              <button type="button" aria-label=${this._t("raise")} @click=${() => this._stepTemp(i, TEMP_STEP)}>+</button>
-            </div>
           </div>
           <label class="row">
             <span>${this._t("mode")}</span>
