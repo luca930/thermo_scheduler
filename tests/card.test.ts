@@ -155,4 +155,23 @@ describe("thermo-scheduler-card", () => {
     await el.updateComplete;
     expect(el.shadowRoot.querySelector('[role="alert"]')).not.toBeNull();
   });
+
+  it("shows the activity history and filters it by origin", async () => {
+    const LOG = [
+      { ts: "2026-11-01T06:30:00+01:00", source: "auto", climate: "climate.salotto", action: "fascia", detail: "21 °C" },
+      { ts: "2026-11-01T07:00:00+01:00", source: "manual", climate: "climate.salotto", action: "save_profile", detail: "{}" },
+    ];
+    const { el } = await mount("it");
+    el.hass = { ...el.hass, callWS: async (m: { type: string }) => (m.type === "thermo_scheduler/log" ? LOG : DATA) };
+    await click(el, ".hero-top");
+    await click(el, '[data-action="history"]');
+    await tick();
+    await el.updateComplete;
+    expect(el.shadowRoot.textContent).toContain("Programmazione salvata");
+    expect(el.shadowRoot.textContent).toContain("Fascia applicata");
+    el.shadowRoot.querySelectorAll(".seg button")[2].click();
+    await el.updateComplete;
+    expect(el.shadowRoot.textContent).not.toContain("Programmazione salvata");
+    expect(el.shadowRoot.textContent).toContain("Fascia applicata");
+  });
 });

@@ -1,9 +1,10 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
-import { api, type Block, type Condition, type Data, type Estimate, type Profile, type Room } from "./api";
+import { api, type Block, type Condition, type Data, type Estimate, type LogEntry, type Profile, type Room } from "./api";
 import { t } from "./i18n";
 
-type View = "summary" | "settings" | "schedule" | "conditions";
+type View = "summary" | "settings" | "schedule" | "conditions" | "history";
+type HistoryFilter = "all" | "manual" | "auto";
 
 const val = (e: Event) => (e.target as HTMLInputElement).value;
 const checked = (e: Event) => (e.target as HTMLInputElement).checked;
@@ -29,6 +30,8 @@ class ThermoSchedulerCard extends LitElement {
     _editIndex: { state: true },
     _modeOpen: { state: true },
     _est: { state: true },
+    _history: { state: true },
+    _historyFilter: { state: true },
     _room: { state: true },
     _error: { state: true },
   };
@@ -424,6 +427,14 @@ class ThermoSchedulerCard extends LitElement {
     .cond-editor { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
     .cond-editor .row { padding: 0; min-height: 0; }
 
+    .seg.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .log-row { align-items: flex-start; padding: 12px 16px; }
+    .log-row > .src:first-child { flex: 0 0 auto; min-width: 0; }
+    .log-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .log-title { font-size: 16px; font-weight: 600; }
+    .src { flex-shrink: 0; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; margin-top: 2px; }
+    .src-manual { background: color-mix(in srgb, var(--ts-accent) 16%, transparent); color: var(--ts-accent); }
+    .src-auto { background: color-mix(in srgb, var(--ts-heat) 16%, transparent); color: var(--ts-heat); }
     .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 16px; text-align: center; color: var(--ts-ink2); }
     .empty ha-icon { --mdc-icon-size: 36px; }
 
@@ -453,6 +464,8 @@ class ThermoSchedulerCard extends LitElement {
   _editIndex: number | null = null;
   _modeOpen = false;
   _est: Estimate | null = null;
+  _history: LogEntry[] | null = null;
+  _historyFilter: HistoryFilter = "all";
   _room: Room | null = null; // bozza della sezione Casa, finché non si salva
   private _estKey = "";
   _error = "";
@@ -691,6 +704,7 @@ class ThermoSchedulerCard extends LitElement {
       case "settings": return this._renderSettings();
       case "schedule": return this._renderSchedule();
       case "conditions": return this._renderConditions();
+      case "history": return this._renderHistory();
       default: return this._renderSummary();
     }
   }
@@ -830,6 +844,9 @@ class ThermoSchedulerCard extends LitElement {
         <button class="nav" data-action="conditions" @click=${() => this._go("conditions")}>
           <span>${this._t("conditions")}</span><ha-icon icon="mdi:chevron-right"></ha-icon>
         </button>
+        <button class="nav" data-action="history" @click=${() => this._openHistory()}>
+          <span>${this._t("history")}</span><ha-icon icon="mdi:chevron-right"></ha-icon>
+        </button>
       </div>` : nothing}
       <div class="group">
         <div class="stack">
@@ -950,6 +967,58 @@ class ThermoSchedulerCard extends LitElement {
     const copy = structuredClone(this._condition!);
     fn(copy);
     this._condition = copy;
+  }
+
+  private _openHistory() {
+    this._historyFilter = "all";
+    this._go("history");
+    this._loadHistory();
+  }
+  private async _loadHistory() {
+    this._history = null;
+    try {
+      this._history = await this._api.log(200);
+    } catch (err) {
+      this._history = [];
+      this._error = (err as { message?: string })?.message || this._t("actionFailed");
+    }
+  }
+
+  // testo leggibile per l'azione registrata (manuale o automatica)
+  private _logTitle(e: LogEntry) {
+    if (e.action.startsWith("servizio ")) return `${this._t("logService")}: ${e.action.slice(9)}`;
+    const known = new Set(["save_profile", "delete_profile", "save_condition", "delete_condition", "assign", "unassign", "clear_override", "set_room", "set_preheat", "override", "override_scaduto", "ciclo_appreso", "condizione_attiva", "condizione_finita", "fascia", "preriscaldamento"]);
+    return known.has(e.action) ? this._t(`log_${e.action}`) : e.action;
+  }
+
+  private _renderHistory() {
+    const filter = this._historyFilter;
+    const entries = (this._history ?? []).filter((e) => filter === "all" || e.source === filter).slice().reverse();
+    const filters: [HistoryFilter, string][] = [["all", "logAll"], ["manual", "logManual"], ["auto", "logAuto"]];
+    return html`<div class="topbar">
+        <button class="back" aria-label=${this._t("back")} @click=${() => this._back()}><ha-icon icon="mdi:chevron-left"></ha-icon>${this._t("back")}</button>
+        <h2>${this._t("history")}</h2>
+        <button class="pill" @click=${() => this._loadHistory()}>${this._t("refresh")}</button>
+      </div>
+      <div class="seg three" role="group" aria-label=${this._t("history")}>
+        ${filters.map(([f, key]) => html`<button type="button" aria-pressed=${f === filter} @click=${() => (this._historyFilter = f)}>${this._t(key)}</button>`)}
+      </div>
+      <div class="group">
+        ${this._history === null ? html`<p class="footnote">…</p>`
+          : entries.length ? entries.map((e) => html`<div class="row log-row">
+              <span class="src src-${e.source}">${this._t(e.source === "manual" ? "logManual" : "logAuto")}</span>
+              <span class="log-body">
+                <span class="log-title">${this._logTitle(e)}</span>
+                <span class="t-sub">${this._logTime(e.ts)}${e.climate ? ` · ${this._name(e.climate)}` : ""}</span>
+                ${e.detail ? html`<span class="t-sub">${e.detail}</span>` : nothing}
+              </span>
+            </div>`)
+          : html`<p class="footnote">${this._t("noHistory")}</p>`}
+      </div>`;
+  }
+  private _logTime(ts: string) {
+    const date = new Date(ts);
+    return date.toLocaleString(this.hass?.language ?? "en", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
   private _renderConditions() {
