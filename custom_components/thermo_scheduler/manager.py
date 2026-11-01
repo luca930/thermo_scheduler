@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from datetime import timedelta
+from functools import partial
 
 from homeassistant.core import CALLBACK_TYPE, Context, Event, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_point_in_time, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
+from .core.conditions import Condition, evaluate
 from .core.resolve import Override, Target, resolve
 from .core.schedule import next_change
 from .storage import Storage
@@ -25,11 +28,22 @@ class Manager:
         self._unsub_timer: CALLBACK_TYPE | None = None
         self._unsub_states: CALLBACK_TYPE | None = None
         self._tracked: tuple[str, ...] = ()
+        self._active: dict[str, Condition] = {}
+        self._pending: dict[tuple[str, str], CALLBACK_TYPE] = {}
+        self._saved_mode: dict[str, str] = {}
+        self._unsub_cond: CALLBACK_TYPE | None = None
+        self._cond_tracked: tuple[str, ...] = ()
 
     async def async_start(self) -> None:
         await self.async_refresh()
 
     async def async_stop(self) -> None:
+        for cancel in self._pending.values():
+            cancel()
+        self._pending.clear()
+        if self._unsub_cond:
+            self._unsub_cond()
+            self._unsub_cond = None
         if self._unsub_timer:
             self._unsub_timer()
             self._unsub_timer = None
@@ -43,7 +57,7 @@ class Manager:
         profile = data.profiles.get(assignment.profile_id) if assignment else None
         if profile is None:
             return None
-        return resolve(profile, dt_util.now(), data.overrides.get(climate_id), None)
+        return resolve(profile, dt_util.now(), data.overrides.get(climate_id), self._active.get(climate_id))
 
     async def async_clear_override(self, climate_id: str) -> None:
         if self.storage.data.overrides.pop(climate_id, None) is not None:
@@ -58,6 +72,9 @@ class Manager:
         if expired:
             await self.storage.async_save()
         self._track_states()
+        if climate_id is None:
+            self._track_conditions()
+            await self._sync_conditions()
         for cid in [climate_id] if climate_id else list(self.storage.data.assignments):
             target = self.target_for(cid)
             if target is not None:
@@ -119,6 +136,92 @@ class Manager:
         assignment = data.assignments.get(climate_id)
         profile = data.profiles.get(assignment.profile_id) if assignment else None
         return next_change(profile, dt_util.now()) if profile else None
+
+    def _assigned(self, climate_id: str) -> list[Condition]:
+        data = self.storage.data
+        assignment = data.assignments.get(climate_id)
+        ids = assignment.condition_ids if assignment else ()
+        return [data.conditions[i] for i in ids if i in data.conditions]
+
+    def _truth(self, cond: Condition) -> bool:
+        states = {c.entity_id: s.state for c in cond.checks if (s := self.hass.states.get(c.entity_id))}
+        return evaluate(cond, states)
+
+    def _track_conditions(self) -> None:
+        ids = tuple(
+            sorted(
+                {
+                    check.entity_id
+                    for cid in self.storage.data.assignments
+                    for cond in self._assigned(cid)
+                    for check in cond.checks
+                }
+            )
+        )
+        if ids == self._cond_tracked:
+            return
+        if self._unsub_cond:
+            self._unsub_cond()
+        self._cond_tracked = ids
+        self._unsub_cond = (
+            async_track_state_change_event(self.hass, list(ids), self._on_condition_state) if ids else None
+        )
+
+    async def _on_condition_state(self, _event: Event) -> None:
+        await self._sync_conditions()
+
+    async def _sync_conditions(self) -> None:
+        for cid in list(self.storage.data.assignments):
+            conds = {c.id: c for c in self._assigned(cid)}
+            active = self._active.get(cid)
+            if active and (active.id not in conds or not self._truth(conds[active.id])):
+                await self._deactivate(cid)
+            for cond in conds.values():
+                key = (cid, cond.id)
+                if not self._truth(cond):
+                    if cancel := self._pending.pop(key, None):
+                        cancel()
+                elif key not in self._pending and cid not in self._active:
+                    if cond.delay <= 0:
+                        await self._activate(cid, cond.id)
+                    else:
+                        when = dt_util.now() + timedelta(seconds=cond.delay)
+                        self._pending[key] = async_track_point_in_time(
+                            self.hass, partial(self._activate_later, cid, cond.id), when
+                        )
+
+    async def _activate_later(self, climate_id: str, cond_id: str, _now) -> None:
+        self._pending.pop((climate_id, cond_id), None)
+        await self._activate(climate_id, cond_id)
+
+    async def _activate(self, climate_id: str, cond_id: str) -> None:
+        cond = next((c for c in self._assigned(climate_id) if c.id == cond_id), None)
+        if cond is None or climate_id in self._active or not self._truth(cond):
+            return
+        state = self.hass.states.get(climate_id)
+        if cond.action.kind == "off" and state and state.state not in (*UNAVAILABLE, "off"):
+            self._saved_mode[climate_id] = state.state
+        self._active[climate_id] = cond
+        if self.storage.data.overrides.pop(climate_id, None) is not None:
+            await self.storage.async_save()
+        await self.async_refresh(climate_id)
+
+    async def _deactivate(self, climate_id: str) -> None:
+        self._active.pop(climate_id, None)
+        mode = self._saved_mode.pop(climate_id, None)
+        state = self.hass.states.get(climate_id)
+        # ponytail: se la fascia non impone una modalità, rimette quella che il climate aveva prima di `off`
+        if (
+            mode
+            and climate_id not in self.storage.data.overrides
+            and state
+            and state.state == "off"
+            and mode in state.attributes.get("hvac_modes", [])
+        ):
+            context = Context()
+            self.own_context_ids.append(context.id)
+            await self._call("set_hvac_mode", {"entity_id": climate_id, "hvac_mode": mode}, context)
+        await self.async_refresh(climate_id)
 
     def _rearm(self) -> None:
         if self._unsub_timer:
