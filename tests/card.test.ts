@@ -60,6 +60,8 @@ describe("thermo-scheduler-card", () => {
 
   it("saves profile via ws", async () => {
     const { el, callWS } = await mount("en");
+    el.shadowRoot.querySelector('[data-action="configure"]').click();
+    await el.updateComplete;
     el._profile = { id: "p9", name: "Test", blocks: [] };
     await el.updateComplete;
     el.shadowRoot.querySelector('[data-action="save-profile"]').click();
@@ -83,8 +85,33 @@ describe("thermo-scheduler-card", () => {
     el._select("climate.camera");
     await el.updateComplete;
     const root = el.shadowRoot;
+    expect(root.querySelector('input[type="time"]')).toBeNull();
+    root.querySelector('[data-action="configure"]').click();
+    await el.updateComplete;
     expect(root.querySelector('input[type="time"]').value).toBe("06:30");
     expect(root.textContent).toContain("Condivisa con: Salotto");
+  });
+
+  it("shows the schedule read-only until configure is pressed", async () => {
+    const { el } = await mount("it");
+    el._select("climate.camera");
+    await el.updateComplete;
+    const root = el.shadowRoot;
+    expect(root.querySelector('[data-action="save-profile"]')).toBeNull();
+    expect(root.querySelector(".blocks").textContent).toContain("06:30");
+    expect(root.querySelector('[data-action="configure"]')).not.toBeNull();
+  });
+
+  it("shows an error banner with retry when an action fails", async () => {
+    const { el, callWS } = await mount("it");
+    callWS.mockRejectedValueOnce(new Error("boom"));
+    el._select("climate.camera");
+    await el.updateComplete;
+    el.shadowRoot.querySelector('[data-action="clear-override"]')?.click();
+    el.shadowRoot.querySelector('select[data-action="link"]').dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    await el.updateComplete;
+    expect(el.shadowRoot.querySelector('[role="alert"]')).not.toBeNull();
   });
 
   it("links an unassigned thermostat to another thermostat's schedule", async () => {
