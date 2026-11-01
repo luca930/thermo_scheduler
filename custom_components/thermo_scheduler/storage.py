@@ -33,6 +33,7 @@ class StoreData:
     rooms: dict[str, Room] = field(default_factory=dict)
     episodes: dict[str, list[Episode]] = field(default_factory=dict)
     outdoor_entity: str | None = None
+    preheat: set[str] = field(default_factory=set)
 
 
 def profile_from_raw(raw: dict) -> Profile:
@@ -94,6 +95,7 @@ def from_raw(raw: dict) -> StoreData:
             for k, v in raw.get("episodes", {}).items()
         },
         outdoor_entity=raw.get("outdoor_entity"),
+        preheat=set(raw.get("preheat", [])),
     )
 
 
@@ -113,6 +115,7 @@ def to_raw(data: StoreData) -> dict:
         "rooms": {k: asdict(v) for k, v in data.rooms.items()},
         "episodes": {k: [asdict(e) for e in v] for k, v in data.episodes.items()},
         "outdoor_entity": data.outdoor_entity,
+        "preheat": sorted(data.preheat),
     }
 
 

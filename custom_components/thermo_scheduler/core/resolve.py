@@ -22,6 +22,7 @@ class Target:
     temperature: float | None
     hvac_mode: str | None
     until: datetime | None
+    preheating: bool = False  # già anticipata la fascia successiva
 
 
 def resolve(

@@ -189,6 +189,16 @@ async def ws_set_outdoor(hass, connection, msg):
     connection.send_result(msg["id"])
 
 
+@_command("set_preheat", {vol.Required("climate_id"): cv.entity_id, vol.Required("enabled"): bool})
+async def ws_set_preheat(hass, connection, msg):
+    manager = _manager(hass)
+    preheat = manager.storage.data.preheat
+    (preheat.add if msg["enabled"] else preheat.discard)(msg["climate_id"])
+    await manager.storage.async_save()
+    await manager.async_refresh(msg["climate_id"])
+    connection.send_result(msg["id"])
+
+
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/estimate", vol.Required("climate_id"): cv.entity_id, vol.Required("target"): vol.Coerce(float)}
 )
@@ -211,5 +221,6 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_set_room,
         ws_set_outdoor,
         ws_estimate,
+        ws_set_preheat,
     ):
         websocket_api.async_register_command(hass, handler)

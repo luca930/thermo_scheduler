@@ -44,3 +44,7 @@ def current_block(profile: Profile, now: datetime) -> tuple[Block, datetime] | N
 
 def next_change(profile: Profile, now: datetime) -> datetime | None:
     return next((start for start, _ in _occurrences(profile, now) if start > now), None)
+
+
+def next_block(profile: Profile, now: datetime) -> tuple[datetime, Block] | None:
+    return next(((start, block) for start, block in _occurrences(profile, now) if start > now), None)

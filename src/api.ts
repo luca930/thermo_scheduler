@@ -48,6 +48,7 @@ export interface Data {
   assignments: Record<string, Assignment>;
   rooms?: Record<string, Room>;
   outdoor_entity?: string | null;
+  preheat?: string[];
 }
 
 type Call = (msg: { type: string; [key: string]: unknown }) => Promise<unknown>;
@@ -64,6 +65,7 @@ export const api = (call: Call) => ({
   unassign: (climate_id: string) => call({ type: "thermo_scheduler/unassign", climate_id }),
   clearOverride: (climate_id: string) => call({ type: "thermo_scheduler/clear_override", climate_id }),
   setRoom: (climate_id: string, room: Room) => call({ type: "thermo_scheduler/set_room", climate_id, room }),
+  setPreheat: (climate_id: string, enabled: boolean) => call({ type: "thermo_scheduler/set_preheat", climate_id, enabled }),
   setOutdoor: (entity_id: string | null) => call({ type: "thermo_scheduler/set_outdoor", entity_id }),
   estimate: (climate_id: string, target: number) =>
     call({ type: "thermo_scheduler/estimate", climate_id, target }) as Promise<Estimate>,

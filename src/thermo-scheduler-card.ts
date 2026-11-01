@@ -658,7 +658,10 @@ class ThermoSchedulerCard extends LitElement {
       disabled: "mdi:pause-circle-outline",
       scheduled: "mdi:calendar-clock",
     };
-    const text = key === "override" ? `${this._t("override")} · ${this._status(cid)}` : this._status(cid);
+    let text = key === "override" ? `${this._t("override")} · ${this._status(cid)}` : this._status(cid);
+    if (this.hass.states[`sensor.${cid.split(".")[1]}_scheduler`]?.attributes?.preheating) {
+      text = `${text} · ${this._t("preheating")}`;
+    }
     return { key, tone, icon: icons[key] ?? "mdi:thermostat", text };
   }
 
@@ -807,6 +810,10 @@ class ThermoSchedulerCard extends LitElement {
           <input type="number" min="5" max="500" step="1" .value=${String(r.area_m2)} @change=${(e: Event) => this._patchRoom(cid, { area_m2: Number(val(e)) })} /></label>
         <label class="row"><span>${this._t("height")}</span>
           <input type="number" min="2" max="6" step="0.1" .value=${String(r.height_m)} @change=${(e: Event) => this._patchRoom(cid, { height_m: Number(val(e)) })} /></label>
+        <label class="row"><span>${this._t("preheat")}</span>
+          <input type="checkbox" role="switch" data-action="preheat" .checked=${(this._data!.preheat ?? []).includes(cid)}
+            @change=${(e: Event) => this._try(() => this._api.setPreheat(cid, checked(e)))} /></label>
+        <p class="footnote">${this._t("preheatHint")}</p>
         <button class="nav" data-action="save-room" @click=${() => this._saveRoom(cid)}>${this._t("saveHouse")}</button>
       </div>`;
   }

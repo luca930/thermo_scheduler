@@ -15,13 +15,14 @@ from homeassistant.util import dt as dt_util
 from .core.conditions import Condition, evaluate
 from .core.heating import Room, calibration, minutes_to_target
 from .core.resolve import Override, Target, resolve
-from .core.schedule import next_change
+from .core.schedule import Profile, next_block, next_change
 from .learning import HeatingLearner
 from .storage import Assignment, Storage
 
 _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE = ("unavailable", "unknown")
 MAX_EPISODES = 60  # cicli di riscaldamento tenuti per climate
+PREHEAT_MARGIN = timedelta(minutes=5)  # anticipo in più oltre la stima
 
 
 def _estimate_reason(t_in, t_out, minutes) -> str | None:
@@ -114,7 +115,30 @@ class Manager:
         profile = data.profiles.get(assignment.profile_id) if assignment else None
         if profile is None or not assignment.enabled:
             return None
-        return resolve(profile, dt_util.now(), data.overrides.get(climate_id), self._active.get(climate_id))
+        now = dt_util.now()
+        target = resolve(profile, now, data.overrides.get(climate_id), self._active.get(climate_id))
+        plan = self._preheat_plan(climate_id, profile, target, now)
+        if plan is not None and now >= plan[0]:
+            block = plan[1]
+            return Target("scheduled", block.temperature, block.hvac_mode, target.until, preheating=True)
+        return target
+
+    def _preheat_plan(self, climate_id: str, profile: Profile, target: Target | None, now):
+        """(inizio dell'anticipo, fascia successiva) se il preriscaldamento è attivo e serve."""
+        if target is None or target.state != "scheduled" or target.temperature is None:
+            return None
+        if climate_id not in self.storage.data.preheat:
+            return None
+        found = next_block(profile, now)
+        if found is None:
+            return None
+        start, block = found
+        if block.temperature <= target.temperature:
+            return None
+        estimate = self.estimate(climate_id, block.temperature)
+        if estimate["minutes"] is None:
+            return None
+        return start - timedelta(minutes=estimate["minutes"]) - PREHEAT_MARGIN, block
 
     async def async_clear_override(self, climate_id: str) -> None:
         if self.storage.data.overrides.pop(climate_id, None) is not None:
@@ -335,9 +359,18 @@ class Manager:
         if self._unsub_timer:
             self._unsub_timer()
             self._unsub_timer = None
-        untils = [
-            t.until for cid in self.storage.data.assignments if (t := self.target_for(cid)) and t.until
-        ]
+        now = dt_util.now()
+        untils = []
+        for cid, assignment in self.storage.data.assignments.items():
+            target = self.target_for(cid)
+            if target is None:
+                continue
+            if target.until:
+                untils.append(target.until)
+            profile = self.storage.data.profiles.get(assignment.profile_id)
+            plan = self._preheat_plan(cid, profile, target, now) if profile and not target.preheating else None
+            if plan is not None and plan[0] > now:
+                untils.append(plan[0])
         if untils:
             self._unsub_timer = async_track_point_in_time(self.hass, self._on_timer, min(untils))
 

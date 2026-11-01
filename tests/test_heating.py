@@ -73,3 +73,15 @@ def test_invalid_room_is_rejected():
         Room(emitter="stufa")
     with pytest.raises(ValueError):
         Room(area_m2=1)
+
+
+def test_next_block_is_the_first_future_block():
+    from datetime import datetime, time
+    from zoneinfo import ZoneInfo
+
+    from custom_components.thermo_scheduler.core.schedule import Block, Profile, next_block
+
+    rome = ZoneInfo("Europe/Rome")
+    profile = Profile("p", "Casa", (Block(frozenset({0}), time(6, 30), 21.0), Block(frozenset({0}), time(22, 0), 17.0)))
+    start, block = next_block(profile, datetime(2026, 11, 2, 5, 0, tzinfo=rome))  # lunedì 2 novembre
+    assert (start.hour, start.minute, block.temperature) == (6, 30, 21.0)

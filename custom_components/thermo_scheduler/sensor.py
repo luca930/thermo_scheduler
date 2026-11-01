@@ -58,4 +58,6 @@ class ThermoSensor(SensorEntity):
             "next_change": _iso(self._manager.next_change_for(self._cid)),
             "override_until": _iso(target.until) if target and target.state == "override" else None,
             "condition": active.name if active else None,
+            "preheating": bool(target and target.preheating),
+            "preheat_enabled": self._cid in data.preheat,
         }
