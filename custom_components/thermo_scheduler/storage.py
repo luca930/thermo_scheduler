@@ -19,6 +19,7 @@ STORAGE_VERSION = 1
 class Assignment:
     profile_id: str
     condition_ids: tuple[str, ...] = ()
+    enabled: bool = True
 
 
 @dataclass
@@ -74,7 +75,7 @@ def from_raw(raw: dict) -> StoreData:
         profiles={k: profile_from_raw(v) for k, v in raw.get("profiles", {}).items()},
         conditions={k: condition_from_raw(v) for k, v in raw.get("conditions", {}).items()},
         assignments={
-            k: Assignment(v["profile_id"], tuple(v.get("condition_ids", ())))
+            k: Assignment(v["profile_id"], tuple(v.get("condition_ids", ())), v.get("enabled", True))
             for k, v in raw.get("assignments", {}).items()
         },
         overrides={
@@ -89,7 +90,7 @@ def to_raw(data: StoreData) -> dict:
         "profiles": {k: profile_to_raw(v) for k, v in data.profiles.items()},
         "conditions": {k: condition_to_raw(v) for k, v in data.conditions.items()},
         "assignments": {
-            k: {"profile_id": v.profile_id, "condition_ids": list(v.condition_ids)}
+            k: {"profile_id": v.profile_id, "condition_ids": list(v.condition_ids), "enabled": v.enabled}
             for k, v in data.assignments.items()
         },
         "overrides": {

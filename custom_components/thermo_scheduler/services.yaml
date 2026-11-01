@@ -1,0 +1,32 @@
+set_profile:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: climate
+    profile_id:
+      required: true
+      selector:
+        text:
+clear_override:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: climate
+enable:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: climate
+disable:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          domain: climate

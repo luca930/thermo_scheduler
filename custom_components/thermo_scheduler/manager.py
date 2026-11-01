@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from collections.abc import Callable
 from datetime import timedelta
 from functools import partial
 
@@ -14,7 +15,7 @@ from homeassistant.util import dt as dt_util
 from .core.conditions import Condition, evaluate
 from .core.resolve import Override, Target, resolve
 from .core.schedule import next_change
-from .storage import Storage
+from .storage import Assignment, Storage
 
 _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE = ("unavailable", "unknown")
@@ -33,6 +34,36 @@ class Manager:
         self._saved_mode: dict[str, str] = {}
         self._unsub_cond: CALLBACK_TYPE | None = None
         self._cond_tracked: tuple[str, ...] = ()
+        self._listeners: list[Callable[[], None]] = []
+
+    def async_add_listener(self, callback: Callable[[], None]) -> CALLBACK_TYPE:
+        self._listeners.append(callback)
+        return lambda: self._listeners.remove(callback)
+
+    def next_change_for(self, climate_id: str):
+        return self._schedule_until(climate_id)
+
+    def active_condition(self, climate_id: str) -> Condition | None:
+        return self._active.get(climate_id)
+
+    async def async_set_profile(self, climate_id: str, profile_id: str) -> None:
+        data = self.storage.data
+        if profile_id not in data.profiles:
+            raise ValueError(f"Programmazione sconosciuta: {profile_id}")
+        current = data.assignments.get(climate_id)
+        data.assignments[climate_id] = Assignment(
+            profile_id, current.condition_ids if current else (), current.enabled if current else True
+        )
+        await self.storage.async_save()
+        await self.async_refresh()
+
+    async def async_set_enabled(self, climate_id: str, enabled: bool) -> None:
+        assignment = self.storage.data.assignments.get(climate_id)
+        if assignment is None:
+            raise ValueError(f"Climate senza programmazione: {climate_id}")
+        assignment.enabled = enabled
+        await self.storage.async_save()
+        await self.async_refresh(climate_id)
 
     async def async_start(self) -> None:
         await self.async_refresh()
@@ -55,7 +86,7 @@ class Manager:
         data = self.storage.data
         assignment = data.assignments.get(climate_id)
         profile = data.profiles.get(assignment.profile_id) if assignment else None
-        if profile is None:
+        if profile is None or not assignment.enabled:
             return None
         return resolve(profile, dt_util.now(), data.overrides.get(climate_id), self._active.get(climate_id))
 
@@ -80,6 +111,8 @@ class Manager:
             if target is not None:
                 await self._apply(cid, target)
         self._rearm()
+        for notify in list(self._listeners):
+            notify()
 
     def _track_states(self) -> None:
         ids = tuple(sorted(self.storage.data.assignments))
