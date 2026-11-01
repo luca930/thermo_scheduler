@@ -28,9 +28,6 @@ export interface Assignment {
   enabled: boolean;
 }
 export interface Room {
-  emitter: "radiators" | "floor";
-  boiler: "gas" | "heat_pump";
-  energy_class: "A" | "B" | "C" | "D" | "E" | "F" | "G";
   area_m2: number;
   height_m: number;
 }
@@ -47,7 +44,6 @@ export interface Data {
   conditions: Record<string, Condition>;
   assignments: Record<string, Assignment>;
   rooms?: Record<string, Room>;
-  outdoor_entity?: string | null;
   preheat?: string[];
 }
 
@@ -66,7 +62,6 @@ export const api = (call: Call) => ({
   clearOverride: (climate_id: string) => call({ type: "thermo_scheduler/clear_override", climate_id }),
   setRoom: (climate_id: string, room: Room) => call({ type: "thermo_scheduler/set_room", climate_id, room }),
   setPreheat: (climate_id: string, enabled: boolean) => call({ type: "thermo_scheduler/set_preheat", climate_id, enabled }),
-  setOutdoor: (entity_id: string | null) => call({ type: "thermo_scheduler/set_outdoor", entity_id }),
   estimate: (climate_id: string, target: number) =>
     call({ type: "thermo_scheduler/estimate", climate_id, target }) as Promise<Estimate>,
 });

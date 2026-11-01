@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
-from .core.heating import BOILERS, EMITTERS, ENERGY_CLASSES, Room
+from .core.heating import Room
 from .storage import (
     Assignment,
     condition_from_raw,
@@ -51,15 +51,7 @@ CONDITION = vol.Schema(
 )
 
 
-ROOM = vol.Schema(
-    {
-        vol.Required("emitter"): vol.In(EMITTERS),
-        vol.Required("boiler"): vol.In(BOILERS),
-        vol.Required("energy_class"): vol.In(ENERGY_CLASSES),
-        vol.Required("area_m2"): vol.Coerce(float),
-        vol.Required("height_m"): vol.Coerce(float),
-    }
-)
+ROOM = vol.Schema({vol.Required("area_m2"): vol.Coerce(float), vol.Required("height_m"): vol.Coerce(float)})
 
 
 def _manager(hass: HomeAssistant):
@@ -181,14 +173,6 @@ async def ws_set_room(hass, connection, msg):
     connection.send_result(msg["id"])
 
 
-@_command("set_outdoor", {vol.Required("entity_id"): vol.Any(None, cv.entity_id)})
-async def ws_set_outdoor(hass, connection, msg):
-    manager = _manager(hass)
-    manager.storage.data.outdoor_entity = msg["entity_id"] or None
-    await manager.storage.async_save()
-    connection.send_result(msg["id"])
-
-
 @_command("set_preheat", {vol.Required("climate_id"): cv.entity_id, vol.Required("enabled"): bool})
 async def ws_set_preheat(hass, connection, msg):
     manager = _manager(hass)
@@ -219,7 +203,6 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_unassign,
         ws_clear_override,
         ws_set_room,
-        ws_set_outdoor,
         ws_estimate,
         ws_set_preheat,
     ):

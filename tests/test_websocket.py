@@ -80,11 +80,11 @@ async def test_assign_and_unassign(hass, hass_storage, freezer, hass_ws_client):
 async def test_room_roundtrip_and_invalid_room(hass, hass_storage, freezer, hass_ws_client):
     client = await hass_ws_client(hass)
     await setup(hass, hass_storage, freezer)
-    room = {"emitter": "floor", "boiler": "heat_pump", "energy_class": "B", "area_m2": 30, "height_m": 2.7}
+    room = {"area_m2": 30, "height_m": 2.7}
     assert (await send(client, "set_room", climate_id=CLIMATE, room=room))["success"]
     listing = (await send(client, "list"))["result"]
-    assert listing["rooms"][CLIMATE]["emitter"] == "floor"
-    bad = await send(client, "set_room", climate_id=CLIMATE, room={**room, "emitter": "stufa"})
+    assert listing["rooms"][CLIMATE]["area_m2"] == 30
+    bad = await send(client, "set_room", climate_id=CLIMATE, room={**room, "area_m2": 1})
     assert not bad["success"]
 
 
@@ -99,12 +99,14 @@ async def test_estimate_reports_missing_outdoor_sensor(hass, hass_storage, freez
     assert result["result"]["configured"] is False
 
 
-async def test_set_outdoor_then_estimate_gives_minutes(hass, hass_storage, freezer, hass_ws_client):
+async def test_outdoor_option_then_estimate_gives_minutes(hass, hass_storage, freezer, hass_ws_client):
     client = await hass_ws_client(hass)
     await setup(hass, hass_storage, freezer)
     hass.states.async_set(CLIMATE, "heat", {**ATTRS, "current_temperature": 18.0})
     hass.states.async_set("sensor.esterno", "5")
-    assert (await send(client, "set_outdoor", entity_id="sensor.esterno"))["success"]
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    hass.config_entries.async_update_entry(entry, options={"outdoor_entity": "sensor.esterno"})
+    await hass.async_block_till_done()
     result = (await send(client, "estimate", climate_id=CLIMATE, target=21.0))["result"]
     assert result["outdoor"] == 5.0
     assert result["minutes"] is not None and result["minutes"] > 0

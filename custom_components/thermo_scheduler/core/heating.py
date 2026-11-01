@@ -35,16 +35,26 @@ LOSS_PRIOR = {"A": 0.010, "B": 0.015, "C": 0.020, "D": 0.028, "E": 0.036, "F": 0
 
 
 @dataclass(frozen=True)
-class Room:
+class House:
+    """Impianto, caldaia e classe energetica: valgono per tutta la casa."""
+
     emitter: str = "radiators"
     boiler: str = "gas"
     energy_class: str = "D"
-    area_m2: float = 20.0
-    height_m: float = 2.7
 
     def __post_init__(self) -> None:
         if self.emitter not in EMITTERS or self.boiler not in BOILERS or self.energy_class not in ENERGY_CLASSES:
             raise ValueError("impianto, caldaia o classe energetica non validi")
+
+
+@dataclass(frozen=True)
+class Room:
+    """Superficie e altezza della stanza del termostato."""
+
+    area_m2: float = 20.0
+    height_m: float = 2.7
+
+    def __post_init__(self) -> None:
         if not (5 <= self.area_m2 <= 500) or not (2 <= self.height_m <= 6):
             raise ValueError("superficie o altezza fuori dai limiti")
 
@@ -63,22 +73,22 @@ class Episode:
     minutes: float
 
 
-def rate_prior(room: Room, t_in: float, t_out: float) -> float:
+def rate_prior(house: House, room: Room, t_in: float, t_out: float) -> float:
     """Velocità di riscaldamento prevista in °C/h, senza calibrazione."""
     scale = REFERENCE_VOLUME / room.volume
-    power = POWER_PRIOR[(room.emitter, room.boiler)] * scale
-    loss = LOSS_PRIOR[room.energy_class] * scale
+    power = POWER_PRIOR[(house.emitter, house.boiler)] * scale
+    loss = LOSS_PRIOR[house.energy_class] * scale
     return power - loss * (t_in - t_out)
 
 
-def calibration(room: Room, episodes: list[Episode]) -> tuple[float, int]:
+def calibration(house: House, room: Room, episodes: list[Episode]) -> tuple[float, int]:
     """Fattore correttivo (mediana osservato/previsto) e numero di cicli usati."""
     ratios = []
     for ep in episodes:
         if ep.minutes < MIN_EPISODE_MINUTES or ep.end_in <= ep.start_in:
             continue
         mean_in = (ep.start_in + ep.end_in) / 2
-        predicted = rate_prior(room, mean_in, ep.outdoor)
+        predicted = rate_prior(house, room, mean_in, ep.outdoor)
         if predicted <= MIN_RATE:
             continue
         observed = (ep.end_in - ep.start_in) * 60 / ep.minutes
@@ -89,7 +99,9 @@ def calibration(room: Room, episodes: list[Episode]) -> tuple[float, int]:
     return min(max(median(ratios), low), high), len(ratios)
 
 
-def minutes_to_target(room: Room, t_in: float, target: float, t_out: float, factor: float = 1.0) -> float | None:
+def minutes_to_target(
+    house: House, room: Room, t_in: float, target: float, t_out: float, factor: float = 1.0
+) -> float | None:
     """Minuti per passare da t_in a target, integrando la velocità lungo il percorso.
 
     None se la casa non può raggiungere il target (dispersioni più alte della potenza)
@@ -101,7 +113,7 @@ def minutes_to_target(room: Room, t_in: float, target: float, t_out: float, fact
     temp = t_in
     minutes = 0.0
     while temp < target - 1e-9:
-        rate = rate_prior(room, temp, t_out) * factor
+        rate = rate_prior(house, room, temp, t_out) * factor
         if rate <= MIN_RATE:
             return None
         nxt = min(target, temp + step)

@@ -1,31 +1,73 @@
 {
   "config": {
-    "step": {"user": {"title": "Thermo Scheduler", "description": "Set up Thermo Scheduler. Schedules and conditions are managed from the card."}},
-    "abort": {"single_instance_allowed": "Only one instance is allowed."}
+    "step": {
+      "user": {
+        "title": "Thermo Scheduler",
+        "description": "Set up Thermo Scheduler. Schedules and conditions are managed from the card."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one instance is allowed."
+    }
   },
   "services": {
     "set_profile": {
       "name": "Set schedule",
       "description": "Assigns a schedule to a thermostat.",
       "fields": {
-        "entity_id": {"name": "Thermostat", "description": "The climate entity."},
-        "profile_id": {"name": "Schedule ID", "description": "ID of the schedule to assign."}
+        "entity_id": {
+          "name": "Thermostat",
+          "description": "The climate entity."
+        },
+        "profile_id": {
+          "name": "Schedule ID",
+          "description": "ID of the schedule to assign."
+        }
       }
     },
     "clear_override": {
       "name": "Clear override",
       "description": "Drops the manual override and returns to the schedule.",
-      "fields": {"entity_id": {"name": "Thermostat", "description": "The climate entity."}}
+      "fields": {
+        "entity_id": {
+          "name": "Thermostat",
+          "description": "The climate entity."
+        }
+      }
     },
     "enable": {
       "name": "Enable",
       "description": "Resumes scheduling for a thermostat.",
-      "fields": {"entity_id": {"name": "Thermostat", "description": "The climate entity."}}
+      "fields": {
+        "entity_id": {
+          "name": "Thermostat",
+          "description": "The climate entity."
+        }
+      }
     },
     "disable": {
       "name": "Disable",
       "description": "Stops scheduling for a thermostat without removing its assignment.",
-      "fields": {"entity_id": {"name": "Thermostat", "description": "The climate entity."}}
+      "fields": {
+        "entity_id": {
+          "name": "Thermostat",
+          "description": "The climate entity."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Home",
+        "description": "Whole-house data, used to estimate heating time.",
+        "data": {
+          "emitter": "Heating system",
+          "boiler": "Boiler",
+          "energy_class": "Energy class",
+          "outdoor_entity": "Outdoor temperature sensor"
+        }
+      }
     }
   }
 }

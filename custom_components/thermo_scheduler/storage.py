@@ -32,7 +32,7 @@ class StoreData:
     saved_modes: dict[str, str] = field(default_factory=dict)
     rooms: dict[str, Room] = field(default_factory=dict)
     episodes: dict[str, list[Episode]] = field(default_factory=dict)
-    outdoor_entity: str | None = None
+    outdoor_entity: str | None = None  # legacy, vedi _migrate_outdoor
     preheat: set[str] = field(default_factory=set)
 
 
@@ -89,11 +89,12 @@ def from_raw(raw: dict) -> StoreData:
             for k, v in raw.get("overrides", {}).items()
         },
         saved_modes=dict(raw.get("saved_modes", {})),
-        rooms={k: Room(**v) for k, v in raw.get("rooms", {}).items()},
+        rooms={k: Room(area_m2=v["area_m2"], height_m=v["height_m"]) for k, v in raw.get("rooms", {}).items()},
         episodes={
             k: [Episode(e["start_in"], e["end_in"], e["outdoor"], e["minutes"]) for e in v]
             for k, v in raw.get("episodes", {}).items()
         },
+        # legacy: letta solo per migrarla nelle opzioni dell'integrazione
         outdoor_entity=raw.get("outdoor_entity"),
         preheat=set(raw.get("preheat", [])),
     )
@@ -114,7 +115,6 @@ def to_raw(data: StoreData) -> dict:
         "saved_modes": dict(data.saved_modes),
         "rooms": {k: asdict(v) for k, v in data.rooms.items()},
         "episodes": {k: [asdict(e) for e in v] for k, v in data.episodes.items()},
-        "outdoor_entity": data.outdoor_entity,
         "preheat": sorted(data.preheat),
     }
 

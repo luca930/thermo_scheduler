@@ -14,12 +14,13 @@ def _manager(hass):
     return hass.config_entries.async_entries(DOMAIN)[0].runtime_data
 
 
-async def _prepare(hass, hass_storage, freezer, outdoor="5"):
+async def _prepare(hass, hass_storage, freezer, outdoor="5", outdoor_entity="sensor.esterno"):
     temp_calls, _ = await setup(hass, hass_storage, freezer)
     hass.states.async_set(CLIMATE, "heat", {**ATTRS, "current_temperature": 18.0})
     hass.states.async_set("sensor.esterno", outdoor)
-    await _manager(hass).storage.async_save()
-    _manager(hass).storage.data.outdoor_entity = "sensor.esterno"
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    options = {"outdoor_entity": outdoor_entity} if outdoor_entity else {}
+    hass.config_entries.async_update_entry(entry, options=options)
     await _at(hass, freezer, BEFORE_BLOCK)
     return temp_calls
 
@@ -45,9 +46,8 @@ async def test_no_preheat_when_flag_is_off(hass, hass_storage, freezer):
 
 
 async def test_no_preheat_without_outdoor_sensor(hass, hass_storage, freezer):
-    temp_calls = await _prepare(hass, hass_storage, freezer)
+    temp_calls = await _prepare(hass, hass_storage, freezer, outdoor_entity=None)
     manager = _manager(hass)
-    manager.storage.data.outdoor_entity = None
     manager.storage.data.preheat.add(CLIMATE)
     before = len(temp_calls)
     await manager.async_refresh(CLIMATE)

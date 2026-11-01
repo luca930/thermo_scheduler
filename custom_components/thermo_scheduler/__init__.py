@@ -61,11 +61,27 @@ async def _register_card(hass: HomeAssistant) -> None:
     add_extra_js_url(hass, CARD_JS_URL)
 
 
+async def _migrate_outdoor(hass: HomeAssistant, entry: ConfigEntry, storage: Storage) -> None:
+    """La sonda esterna stava nello storage: ora è un'opzione dell'integrazione."""
+    legacy = storage.data.outdoor_entity
+    if legacy and "outdoor_entity" not in entry.options:
+        hass.config_entries.async_update_entry(entry, options={**entry.options, "outdoor_entity": legacy})
+    if legacy:
+        storage.data.outdoor_entity = None
+        await storage.async_save()
+
+
+async def _options_changed(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await entry.runtime_data.async_refresh()
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     storage = Storage(hass)
     await storage.async_load()
-    manager = Manager(hass, storage)
+    await _migrate_outdoor(hass, entry, storage)
+    manager = Manager(hass, storage, lambda: entry.options)
     entry.runtime_data = manager
+    entry.async_on_unload(entry.add_update_listener(_options_changed))
     await manager.async_start()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _register_services(hass)

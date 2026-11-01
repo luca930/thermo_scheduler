@@ -443,7 +443,7 @@ class ThermoSchedulerCard extends LitElement {
   `;
 
   hass: any;
-  _config: { entity?: string; outdoor_entity?: string } = {};
+  _config: { entity?: string } = {};
   _data: Data | null = null;
   _profile: Profile | null = null;
   _condition: Condition | null = null;
@@ -455,13 +455,12 @@ class ThermoSchedulerCard extends LitElement {
   _est: Estimate | null = null;
   _room: Room | null = null; // bozza della sezione Casa, finché non si salva
   private _estKey = "";
-  private _outdoorSent: string | null = null;
   _error = "";
   private _retry: (() => Promise<unknown>) | null = null;
   private _loaded = false;
 
   // la card mostra un solo termostato, scelto nella configurazione
-  setConfig(config: { entity?: string; outdoor_entity?: string }) {
+  setConfig(config: { entity?: string }) {
     if (!config?.entity?.startsWith("climate.")) {
       throw new Error("thermo-scheduler-card: imposta 'entity' con un termostato climate.*");
     }
@@ -473,16 +472,7 @@ class ThermoSchedulerCard extends LitElement {
 
   updated() {
     if (!this._data || !this.hass) return;
-    this._syncOutdoor();
     this._maybeEstimate();
-  }
-
-  // il sensore della temperatura esterna è nella configurazione della card; lo salva l'integrazione
-  private _syncOutdoor() {
-    const wanted = this._config.outdoor_entity ?? null;
-    if (wanted === (this._data!.outdoor_entity ?? null) || wanted === this._outdoorSent) return;
-    this._outdoorSent = wanted;
-    this._try(() => this._api.setOutdoor(wanted));
   }
 
   // tempo di riscaldamento per la prossima fascia; ricalcolato ogni 10 minuti o al cambio di fascia
@@ -783,29 +773,16 @@ class ThermoSchedulerCard extends LitElement {
 
   // casa: impianto, caldaia, classe energetica, metratura; servono alla stima
   private _roomView(cid: string): Room {
-    return this._room ?? this._data!.rooms?.[cid] ?? { emitter: "radiators", boiler: "gas", energy_class: "D", area_m2: 20, height_m: 2.7 };
+    return this._room ?? this._data!.rooms?.[cid] ?? { area_m2: 20, height_m: 2.7 };
   }
   private _patchRoom(cid: string, patch: Partial<Room>) {
     this._room = { ...this._roomView(cid), ...patch };
   }
+  // stanza: superficie e altezza; impianto, caldaia e classe sono nelle impostazioni dell'integrazione
   private _renderHouse(cid: string) {
     const r = this._roomView(cid);
     return html`<h3>${this._t("house")}</h3>
       <div class="group tile-group">
-        <label class="row"><span>${this._t("emitter")}</span>
-          <select @change=${(e: Event) => this._patchRoom(cid, { emitter: val(e) as Room["emitter"] })}>
-            <option value="radiators" ?selected=${r.emitter === "radiators"}>${this._t("emitterRadiators")}</option>
-            <option value="floor" ?selected=${r.emitter === "floor"}>${this._t("emitterFloor")}</option>
-          </select></label>
-        <label class="row"><span>${this._t("boiler")}</span>
-          <select @change=${(e: Event) => this._patchRoom(cid, { boiler: val(e) as Room["boiler"] })}>
-            <option value="gas" ?selected=${r.boiler === "gas"}>${this._t("boilerGas")}</option>
-            <option value="heat_pump" ?selected=${r.boiler === "heat_pump"}>${this._t("boilerHeatPump")}</option>
-          </select></label>
-        <label class="row"><span>${this._t("energyClass")}</span>
-          <select @change=${(e: Event) => this._patchRoom(cid, { energy_class: val(e) as Room["energy_class"] })}>
-            ${["A", "B", "C", "D", "E", "F", "G"].map((c) => html`<option value=${c} ?selected=${r.energy_class === c}>${c}</option>`)}
-          </select></label>
         <label class="row"><span>${this._t("area")}</span>
           <input type="number" min="5" max="500" step="1" .value=${String(r.area_m2)} @change=${(e: Event) => this._patchRoom(cid, { area_m2: Number(val(e)) })} /></label>
         <label class="row"><span>${this._t("height")}</span>
@@ -814,6 +791,7 @@ class ThermoSchedulerCard extends LitElement {
           <input type="checkbox" role="switch" data-action="preheat" .checked=${(this._data!.preheat ?? []).includes(cid)}
             @change=${(e: Event) => this._try(() => this._api.setPreheat(cid, checked(e)))} /></label>
         <p class="footnote">${this._t("preheatHint")}</p>
+        <p class="footnote">${this._t("houseHint")}</p>
         <button class="nav" data-action="save-room" @click=${() => this._saveRoom(cid)}>${this._t("saveHouse")}</button>
       </div>`;
   }

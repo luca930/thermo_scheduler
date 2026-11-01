@@ -13,7 +13,7 @@ from homeassistant.helpers.event import async_track_point_in_time, async_track_s
 from homeassistant.util import dt as dt_util
 
 from .core.conditions import Condition, evaluate
-from .core.heating import Room, calibration, minutes_to_target
+from .core.heating import House, Room, calibration, minutes_to_target
 from .core.resolve import Override, Target, resolve
 from .core.schedule import Profile, next_block, next_change
 from .learning import HeatingLearner
@@ -34,9 +34,10 @@ def _estimate_reason(t_in, t_out, minutes) -> str | None:
 
 
 class Manager:
-    def __init__(self, hass: HomeAssistant, storage: Storage) -> None:
+    def __init__(self, hass: HomeAssistant, storage: Storage, options: Callable[[], dict] = dict) -> None:
         self.hass = hass
         self.storage = storage
+        self._options = options
         self.own_context_ids: deque[str] = deque(maxlen=64)
         self._unsub_timer: CALLBACK_TYPE | None = None
         self._unsub_states: CALLBACK_TYPE | None = None
@@ -186,8 +187,12 @@ class Manager:
         elif new.context.id not in self.own_context_ids and self._is_manual(cid, old, new):
             await self._set_override(cid, new)
 
+    def _house(self) -> House:
+        o = self._options()
+        return House(o.get("emitter", "radiators"), o.get("boiler", "gas"), o.get("energy_class", "D"))
+
     def _outdoor_temp(self) -> float | None:
-        entity = self.storage.data.outdoor_entity
+        entity = self._options().get("outdoor_entity")
         state = self.hass.states.get(entity) if entity else None
         if state is None or state.state in UNAVAILABLE:
             return None
@@ -215,16 +220,17 @@ class Manager:
         """Minuti per arrivare a `target` con i dati attuali e lo storico del climate."""
         data = self.storage.data
         room = data.rooms.get(climate_id)
+        house = self._house()
         state = self.hass.states.get(climate_id)
         t_in = state.attributes.get("current_temperature") if state else None
         t_out = self._outdoor_temp()
-        factor, samples = calibration(room or Room(), data.episodes.get(climate_id, []))
+        factor, samples = calibration(house, room or Room(), data.episodes.get(climate_id, []))
         minutes = None
         if t_in is not None and t_out is not None:
-            minutes = minutes_to_target(room or Room(), t_in, target, t_out, factor)
+            minutes = minutes_to_target(house, room or Room(), t_in, target, t_out, factor)
         return {
             "minutes": None if minutes is None else round(minutes),
-            "configured": room is not None,
+            "configured": room is not None and "emitter" in self._options(),
             "samples": samples,
             "inside": t_in,
             "outdoor": t_out,
