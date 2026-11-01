@@ -95,7 +95,8 @@ class ThermoSchedulerCard extends LitElement {
     }
     select.picker {
       width: 100%;
-      min-height: 44px;
+      min-height: 52px;
+      padding: 0 16px;
       font-size: 17px;
       font-weight: 600;
     }
@@ -187,7 +188,8 @@ class ThermoSchedulerCard extends LitElement {
       font-weight: 300;
       line-height: 56px;
     }
-    .dial-value small { font-size: 26px; vertical-align: top; margin-left: 2px; }
+    .dial-num { display: inline-flex; align-items: flex-start; }
+    .dial-value small { font-size: 26px; line-height: 1; margin: 4px 0 0 2px; }
     .dial-mode { font-size: 15px; color: var(--ts-ink2); margin-top: 4px; }
     .blocks { list-style: none; margin: 0; padding: 0; width: 100%; }
     .blocks li { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 16px; font-size: 17px; }
@@ -198,7 +200,12 @@ class ThermoSchedulerCard extends LitElement {
     .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex-shrink: 0; }
     .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 16px; text-align: center; color: var(--ts-ink2); }
     .empty ha-icon { --mdc-icon-size: 36px; }
-    .view-actions { width: 100%; padding: 8px 0 0; }
+    .view-actions { width: 100%; }
+    .thermostat { display: flex; flex-direction: column; gap: 12px; }
+    .stack { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; }
+    .caption { font-size: 13px; line-height: 18px; color: var(--ts-ink2); }
+    .stack select { width: 100%; padding: 0; background: transparent; font-size: 17px; text-align: left; }
+    .stack select:focus-visible { outline-offset: 4px; }
 
     /* editor A */
     .editor { display: flex; flex-direction: column; gap: 8px; }
@@ -351,9 +358,17 @@ class ThermoSchedulerCard extends LitElement {
     return new Intl.NumberFormat(this.hass?.language ?? "en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Number(v));
   }
   private _dayNames(): string[] { return this._t("days").split(","); }
+  // "Lun–Ven" per le sequenze consecutive, "Sab, Dom" per il resto
   private _dayList(days: number[]) {
     const names = this._dayNames();
-    return days.map((d) => names[d]).join(" ");
+    const sorted = [...days].sort((a, b) => a - b);
+    const runs: number[][] = [];
+    for (const d of sorted) {
+      const last = runs[runs.length - 1];
+      if (last && d === last[last.length - 1] + 1) last.push(d);
+      else runs.push([d]);
+    }
+    return runs.map((r) => (r.length > 2 ? `${names[r[0]]}–${names[r[r.length - 1]]}` : r.map((d) => names[d]).join(", "))).join(", ");
   }
   private _blockTone(b: Block) { return b.hvac_mode === "cool" ? "cool" : "heat"; }
 
@@ -395,7 +410,7 @@ class ThermoSchedulerCard extends LitElement {
     const all = Object.keys(this.hass.states).filter((id) => id.startsWith("climate."));
     return html`<h3>${this._t("climates")}</h3>
       <div class="group">
-        <div class="row">
+        <div>
           <select class="picker" aria-label=${this._t("climates")}
             @change=${(e: Event) => { this._configuring = false; this._select(val(e)); }}>
             ${all.map((id) => html`<option value=${id} ?selected=${id === this._selected}>${this._name(id)}${id in d.assignments ? " ✓" : ""}</option>`)}
@@ -409,7 +424,7 @@ class ThermoSchedulerCard extends LitElement {
     const d = this._data!;
     const a = d.assignments[cid];
     const others = a ? this._users(a.profile_id).filter((id) => id !== cid) : [];
-    return html`<div data-climate=${cid}>
+    return html`<div class="thermostat" data-climate=${cid}>
       ${this._renderStatus(cid)}
       ${this._configuring && this._profile ? this._renderEditor() : this._renderView(cid)}
       <div class="group">
@@ -418,8 +433,8 @@ class ThermoSchedulerCard extends LitElement {
           <input type="checkbox" role="switch" .checked=${a.enabled}
             @change=${(e: Event) => this._try(() => this._api.assign(cid, a.profile_id, { enabled: checked(e) }))} />
         </label>` : nothing}
-        <div class="row">
-          <span>${this._t("schedule")}</span>
+        <div class="stack">
+          <span class="caption">${this._t("schedule")}</span>
           <select data-action="link" @change=${(e: Event) => val(e) && this._try(() => this._api.assign(cid, val(e)))}>
             ${a ? nothing : html`<option value="">${this._t("useSchedule")}</option>`}
             ${Object.values(d.profiles).map((p) => html`<option value=${p.id} ?selected=${p.id === a?.profile_id}>${p.name} (${this._users(p.id).map((id) => this._name(id)).join(", ") || "-"})</option>`)}
@@ -479,7 +494,8 @@ class ThermoSchedulerCard extends LitElement {
     const blocks = this._profile.blocks;
     return html`<div class="view tone-${tone}">
       <div class="dial" style="--p: ${p}" role="img" aria-label=${`${this._t("target")} ${temp == null ? "–" : this._fmt(temp)} °`}>
-        <span class="dial-value">${temp == null ? "–" : this._fmt(temp)}<small>°</small>
+        <span class="dial-value">
+          <span class="dial-num">${temp == null ? "–" : this._fmt(temp)}<small>°</small></span>
           <span class="dial-mode">${modeLabel}</span>
         </span>
       </div>
