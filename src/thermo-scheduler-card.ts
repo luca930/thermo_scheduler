@@ -27,6 +27,7 @@ class ThermoSchedulerCard extends LitElement {
     _view: { state: true },
     _scheduleDay: { state: true },
     _editIndex: { state: true },
+    _modeOpen: { state: true },
     _error: { state: true },
   };
   static styles = css`
@@ -182,8 +183,20 @@ class ThermoSchedulerCard extends LitElement {
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
       transition: background-color 250ms var(--ts-ease);
     }
-    .hero:hover { opacity: 1; }
-    .hero-top { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; text-align: left; }
+    .hero-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 32px;
+      padding: 0;
+      background: transparent;
+      color: var(--ts-ink);
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      text-align: left;
+    }
     .hero-top .hero-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hero-top ha-icon { color: var(--ts-ink2); }
 
@@ -250,6 +263,12 @@ class ThermoSchedulerCard extends LitElement {
     .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; }
     .tile {
       display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      width: 100%;
+      min-height: 84px;
+      padding: 12px 14px;
+      text-align: left;
       flex-direction: column;
       gap: 2px;
       min-height: 84px;
@@ -259,6 +278,16 @@ class ThermoSchedulerCard extends LitElement {
     }
     .tile ha-icon { margin-bottom: 4px; }
     .mode-tile { background: color-mix(in srgb, var(--tone) 16%, var(--ts-group)); }
+    .mode-picker { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .mode-picker button {
+      min-height: 40px;
+      padding: 0 16px;
+      border-radius: 20px;
+      background: var(--ts-group);
+      color: var(--ts-ink);
+      font-weight: 500;
+    }
+    .mode-picker button[aria-pressed="true"] { background: var(--ts-accent); color: #fff; font-weight: 600; }
     .mode-tile ha-icon, .mode-tile .t-value { color: var(--tone); }
     .t-label { font-size: 13px; color: var(--ts-ink2); }
     .t-value { font-size: 17px; font-weight: 600; }
@@ -420,6 +449,7 @@ class ThermoSchedulerCard extends LitElement {
   _view: View = "summary";
   _scheduleDay = todayIndex();
   _editIndex: number | null = null;
+  _modeOpen = false;
   _error = "";
   private _retry: (() => Promise<unknown>) | null = null;
   private _loaded = false;
@@ -449,7 +479,13 @@ class ThermoSchedulerCard extends LitElement {
     if (!this._selected) this._selected = Object.keys(this._data.assignments)[0] ?? "";
     this._syncProfile();
   }
-  private _name(id: string) { return this.hass.states[id]?.attributes?.friendly_name ?? id; }
+  // solo il friendly name; senza, il nome dell'entità senza dominio (es. "Bagno giorno")
+  private _name(id: string) {
+    const friendly = this.hass.states[id]?.attributes?.friendly_name;
+    if (friendly) return friendly;
+    const object = id.split(".")[1] ?? id;
+    return object.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  }
   private _users(profileId: string) {
     return Object.entries(this._data!.assignments).filter(([, a]) => a.profile_id === profileId).map(([id]) => id);
   }
@@ -479,9 +515,24 @@ class ThermoSchedulerCard extends LitElement {
     this._error = "";
     try {
       await this._do(fn);
-    } catch {
-      this._error = this._t("actionFailed");
+    } catch (err) {
+      const message = (err as { message?: string })?.message;
+      this._error = message || this._t("actionFailed");
     }
+  }
+
+  // cambio modalità: come una modifica manuale, quindi crea un override
+  private async _setMode(cid: string, mode: string) {
+    this._modeOpen = false;
+    try {
+      await this.hass.callService("climate", "set_hvac_mode", { entity_id: cid, hvac_mode: mode });
+    } catch (err) {
+      this._error = (err as { message?: string })?.message || this._t("actionFailed");
+    }
+  }
+  private _modeName(mode: string) {
+    const keys: Record<string, string> = { heat: "heating", cool: "cooling", off: "off", auto: "auto", heat_cool: "auto", dry: "dry", fan_only: "fan" };
+    return this._t(keys[mode] ?? mode);
   }
 
   // navigazione: stato di sola UI
@@ -632,9 +683,11 @@ class ThermoSchedulerCard extends LitElement {
     const prefix = next ? (next.k === 0 ? "" : next.k === 1 ? `${this._t("tomorrow")} ` : `${names[next.wd]} `) : "";
     const hvac = this._hvac(cid);
     const hvacTone = hvac === "cool" ? "cool" : hvac === "heat" ? "heat" : "off";
-    return html`<button class="hero tone-${hvacTone}" data-climate=${cid} aria-label=${`${this._name(cid)}: ${info.text}`}
-        @click=${() => this._go("settings")}>
-      <span class="hero-top"><span class="hero-name">${this._name(cid)}</span><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+    const modes: string[] = this.hass.states[cid]?.attributes?.hvac_modes ?? [];
+    return html`<section class="hero tone-${hvacTone}" data-climate=${cid}>
+      <button class="hero-top" aria-label=${`${this._t("settings")}: ${this._name(cid)}`} @click=${() => this._go("settings")}>
+        <span class="hero-name">${this._name(cid)}</span><ha-icon icon="mdi:chevron-right"></ha-icon>
+      </button>
       <span class="dial" style="--p: ${pct}" role="img" aria-label=${`${this._t("target")} ${temp == null ? "–" : this._fmt(temp)} °`}>
         <span class="ring"></span>
         <span class="knob-wrap"><span class="knob"></span></span>
@@ -645,19 +698,23 @@ class ThermoSchedulerCard extends LitElement {
       </span>
       <span class="pill status-pill tone-${info.tone}"><ha-icon icon=${info.icon}></ha-icon>${info.text}</span>
       <span class="tiles">
-        <span class="tile mode-tile">
+        <button class="tile mode-tile" aria-expanded=${this._modeOpen} aria-controls="mode-picker"
+          @click=${() => (this._modeOpen = !this._modeOpen)}>
           <ha-icon icon=${hvac === "cool" ? "mdi:snowflake" : "mdi:fire"}></ha-icon>
           <span class="t-label">${this._t("mode")}</span>
           <span class="t-value">${this._modeLabel(cid)}</span>
-        </span>
+        </button>
         ${next ? html`<span class="tile">
           <span class="t-label">${this._t("next")}</span>
           <span class="t-value">${prefix}${next.block.start}</span>
           <span class="t-sub">${this._fmt(next.block.temperature)}°</span>
         </span>` : nothing}
       </span>
+      ${this._modeOpen && modes.length ? html`<div id="mode-picker" class="mode-picker" role="group" aria-label=${this._t("changeMode")}>
+        ${modes.map((m) => html`<button type="button" aria-pressed=${m === hvac} @click=${() => this._setMode(cid, m)}>${this._modeName(m)}</button>`)}
+      </div>` : nothing}
       ${!a ? html`<span class="footnote">${this._t("emptySchedule")}</span>` : nothing}
-    </button>`;
+    </section>`;
   }
 
   private _renderSettings() {

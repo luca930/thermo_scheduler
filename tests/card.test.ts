@@ -73,13 +73,13 @@ describe("thermo-scheduler-card", () => {
   it("summary is read-only and opens the settings on tap", async () => {
     const { el } = await mount("it");
     expect(el.shadowRoot.querySelector('input[type="time"]')).toBeNull();
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     expect(el.shadowRoot.querySelector('[data-action="open-schedule"]')).not.toBeNull();
   });
 
   it("opens the schedule and edits a slot", async () => {
     const { el } = await mount("it");
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     await click(el, '[data-action="open-schedule"]');
     expect(el.shadowRoot.querySelector('input[type="time"]')).toBeNull();
     await click(el, ".tabs button:nth-child(1)"); // lunedì
@@ -89,7 +89,7 @@ describe("thermo-scheduler-card", () => {
 
   it("saves profile via ws", async () => {
     const { el, callWS } = await mount("en");
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     await click(el, '[data-action="open-schedule"]');
     el._profile = { id: "p9", name: "Test", blocks: [] };
     await el.updateComplete;
@@ -103,7 +103,7 @@ describe("thermo-scheduler-card", () => {
 
   it("lists conditions with delay and action", async () => {
     const { el } = await mount("it");
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     await click(el, '[data-action="conditions"]');
     const text = el.shadowRoot.textContent;
     expect(text).toContain("Finestra");
@@ -113,13 +113,13 @@ describe("thermo-scheduler-card", () => {
 
   it("shows who shares the selected thermostat's schedule", async () => {
     const { el } = await mount("it", "climate.camera");
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     expect(el.shadowRoot.textContent).toContain("Condivisa con: Salotto");
   });
 
   it("links an unassigned thermostat to another thermostat's schedule", async () => {
     const { el, callWS } = await mount("it", "climate.bagno");
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     const sel = el.shadowRoot.querySelector('[data-action="link"]');
     sel.value = "p1";
     sel.dispatchEvent(new Event("change"));
@@ -133,7 +133,7 @@ describe("thermo-scheduler-card", () => {
 
   it("makes a shared schedule independent by copying it", async () => {
     const { el, callWS } = await mount("it", "climate.camera");
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     await click(el, '[data-action="own"]');
     await tick();
     const save = callWS.mock.calls.map((c: any[]) => c[0]).find((m: any) => m.type === "thermo_scheduler/save_profile");
@@ -148,7 +148,7 @@ describe("thermo-scheduler-card", () => {
   it("shows an error banner with retry when an action fails", async () => {
     const { el, callWS } = await mount("it", "climate.camera");
     callWS.mockRejectedValueOnce(new Error("boom"));
-    await click(el, "[data-climate]");
+    await click(el, ".hero-top");
     const sel = el.shadowRoot.querySelector('select[data-action="link"]');
     sel.dispatchEvent(new Event("change"));
     await tick();

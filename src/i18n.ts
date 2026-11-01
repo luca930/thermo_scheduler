@@ -16,6 +16,7 @@ const STRINGS: Record<string, Record<string, string>> = {
     target: "Target", lower: "Lower by 0.5 °", raise: "Raise by 0.5 °", actionFailed: "Action failed", retry: "Retry",
     next: "Next", tomorrow: "Tomorrow", timeSlots: "Time slots", back: "Back", noBlocksDay: "No slots this day",
     slot: "Slot", done: "Done", forThis: "For this thermostat",
+    settings: "Settings", changeMode: "Change mode", auto: "Auto", dry: "Dry", fan: "Fan",
   },
   it: {
     climates: "Termostati", profiles: "Programmazioni", conditions: "Condizioni",
@@ -35,6 +36,7 @@ const STRINGS: Record<string, Record<string, string>> = {
     actionFailed: "Operazione non riuscita", retry: "Riprova",
     next: "Prossima", tomorrow: "Domani", timeSlots: "Fasce orarie", back: "Indietro", noBlocksDay: "Nessuna fascia in questo giorno",
     slot: "Fascia", done: "Fine", forThis: "Per questo termostato",
+    settings: "Impostazioni", changeMode: "Cambia modalità", auto: "Automatico", dry: "Deumidifica", fan: "Ventilatore",
   },
 };
 
