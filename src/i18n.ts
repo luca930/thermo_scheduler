@@ -9,6 +9,7 @@ const STRINGS: Record<string, Record<string, string>> = {
     entity: "Entity", value: "Value", match: "Match", all: "All", any: "Any", addCheck: "Add check",
     delay: "Delay (s)", action: "Action", actionOff: "Turn off", actionMin: "Minimum setpoint {x}",
     delaySec: "delay {x}s",
+    useSchedule: "Use schedule of…", ownSchedule: "Own schedule", sharedWith: "Shared with: {x}",
     days: "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
   },
   it: {
@@ -21,6 +22,7 @@ const STRINGS: Record<string, Record<string, string>> = {
     entity: "Entità", value: "Valore", match: "Combinazione", all: "Tutte", any: "Almeno una", addCheck: "Aggiungi test",
     delay: "Ritardo (s)", action: "Azione", actionOff: "Spegni", actionMin: "Setpoint minimo {x}",
     delaySec: "ritardo {x}s",
+    useSchedule: "Usa la programmazione di…", ownSchedule: "Programmazione propria", sharedWith: "Condivisa con: {x}",
     days: "Lun,Mar,Mer,Gio,Ven,Sab,Dom",
   },
 };

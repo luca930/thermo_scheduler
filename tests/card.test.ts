@@ -19,7 +19,10 @@ const DATA = {
       action: { kind: "off", temperature: null },
     },
   },
-  assignments: { "climate.salotto": { profile_id: "p1", condition_ids: ["c1"], enabled: true } },
+  assignments: {
+    "climate.salotto": { profile_id: "p1", condition_ids: ["c1"], enabled: true },
+    "climate.camera": { profile_id: "p1", condition_ids: [], enabled: true },
+  },
   overrides: {},
 };
 
@@ -34,6 +37,8 @@ async function mount(language = "it") {
     callWS,
     states: {
       "climate.salotto": { state: "heat", attributes: { friendly_name: "Salotto" } },
+      "climate.camera": { state: "heat", attributes: { friendly_name: "Camera" } },
+      "climate.bagno": { state: "heat", attributes: { friendly_name: "Bagno" } },
       "sensor.salotto_scheduler": {
         state: "override",
         attributes: { override_until: "2026-11-04T22:00:00+01:00" },
@@ -71,5 +76,44 @@ describe("thermo-scheduler-card", () => {
     expect(text).toContain("Finestra");
     expect(text).toContain("120");
     expect(text).toContain("Spegni");
+  });
+
+  it("shows the selected thermostat's schedule and who shares it", async () => {
+    const { el } = await mount("it");
+    el._select("climate.camera");
+    await el.updateComplete;
+    const root = el.shadowRoot;
+    expect(root.querySelector('input[type="time"]').value).toBe("06:30");
+    expect(root.textContent).toContain("Condivisa con: Salotto");
+  });
+
+  it("links an unassigned thermostat to another thermostat's schedule", async () => {
+    const { el, callWS } = await mount("it");
+    el._select("climate.bagno");
+    await el.updateComplete;
+    const sel = el.shadowRoot.querySelector('[data-action="link"]');
+    sel.value = "p1";
+    sel.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(callWS).toHaveBeenCalledWith({
+      type: "thermo_scheduler/assign",
+      climate_id: "climate.bagno",
+      profile_id: "p1",
+    });
+  });
+
+  it("makes a shared schedule independent by copying it", async () => {
+    const { el, callWS } = await mount("it");
+    el._select("climate.camera");
+    await el.updateComplete;
+    el.shadowRoot.querySelector('[data-action="own"]').click();
+    await new Promise((r) => setTimeout(r, 0));
+    const save = callWS.mock.calls.map((c: any[]) => c[0]).find((m: any) => m.type === "thermo_scheduler/save_profile");
+    expect(save.profile.name).toBe("Camera");
+    expect(save.profile.id).not.toBe("p1");
+    expect(save.profile.blocks).toEqual(DATA.profiles.p1.blocks);
+    expect(callWS).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "thermo_scheduler/assign", climate_id: "climate.camera", profile_id: save.profile.id }),
+    );
   });
 });

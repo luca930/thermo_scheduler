@@ -12,8 +12,7 @@ class ThermoSchedulerCard extends LitElement {
     _data: { state: true },
     _profile: { state: true },
     _condition: { state: true },
-    _newClimate: { state: true },
-    _newProfile: { state: true },
+    _selected: { state: true },
   };
   static styles = css`
     :host { display: block; }
@@ -24,8 +23,7 @@ class ThermoSchedulerCard extends LitElement {
   _data: Data | null = null;
   _profile: Profile | null = null;
   _condition: Condition | null = null;
-  _newClimate = "";
-  _newProfile = "";
+  _selected = "";
   private _loaded = false;
 
   setConfig(_config: unknown) {}
@@ -40,7 +38,33 @@ class ThermoSchedulerCard extends LitElement {
 
   private get _api() { return api((msg) => this.hass.callWS(msg)); }
   private _t(key: string, vars?: Record<string, string | number>) { return t(this.hass?.language, key, vars); }
-  private async _reload() { this._data = await this._api.list(); }
+  private async _reload() {
+    this._data = await this._api.list();
+    if (!this._selected) this._selected = Object.keys(this._data.assignments)[0] ?? "";
+    this._syncProfile();
+  }
+  private _name(id: string) { return this.hass.states[id]?.attributes?.friendly_name ?? id; }
+  private _users(profileId: string) {
+    return Object.entries(this._data!.assignments).filter(([, a]) => a.profile_id === profileId).map(([id]) => id);
+  }
+  // l'editor mostra sempre la programmazione del termostato selezionato
+  private _syncProfile() {
+    const a = this._data?.assignments[this._selected];
+    if (!a) this._profile = null;
+    else if (this._profile?.id !== a.profile_id) this._profile = structuredClone(this._data!.profiles[a.profile_id]);
+  }
+  _select(id: string) {
+    this._selected = id;
+    this._profile = null;
+    this._syncProfile();
+  }
+  private async _makeOwn(cid: string) {
+    const a = this._data!.assignments[cid];
+    const blocks = a ? structuredClone(this._data!.profiles[a.profile_id].blocks) : [];
+    const profile = { id: newId("p"), name: this._name(cid), blocks };
+    await this._api.saveProfile(profile);
+    await this._api.assign(cid, profile.id);
+  }
   private async _do(fn: () => Promise<unknown>) { await fn(); await this._reload(); }
 
   private _status(climateId: string): string {
@@ -70,58 +94,54 @@ class ThermoSchedulerCard extends LitElement {
 
   render() {
     if (!this._data) return nothing;
-    return html`<ha-card>${this._renderClimates()}${this._renderProfiles()}${this._renderConditions()}</ha-card>`;
+    return html`<ha-card>${this._renderClimates()}${this._renderConditions()}</ha-card>`;
   }
 
   private _renderClimates() {
     const d = this._data!;
-    const free = Object.keys(this.hass.states).filter((id) => id.startsWith("climate.") && !(id in d.assignments));
+    const all = Object.keys(this.hass.states).filter((id) => id.startsWith("climate."));
     return html`<section>
       <h3>${this._t("climates")}</h3>
-      ${Object.entries(d.assignments).map(([cid, a]) => html`<div class="row" data-climate=${cid}>
-        <b>${this.hass.states[cid]?.attributes?.friendly_name ?? cid}</b>
-        <span>${this._status(cid)}</span>
-        <select @change=${(e: Event) => this._do(() => this._api.assign(cid, val(e)))}>
-          ${Object.values(d.profiles).map((p) => html`<option value=${p.id} ?selected=${p.id === a.profile_id}>${p.name}</option>`)}
-        </select>
-        ${Object.values(d.conditions).map((c) => html`<label><input type="checkbox" .checked=${a.condition_ids.includes(c.id)}
-          @change=${(e: Event) => this._do(() => this._api.assign(cid, a.profile_id, {
-            condition_ids: checked(e) ? [...a.condition_ids, c.id] : a.condition_ids.filter((x) => x !== c.id),
-          }))} />${c.name}</label>`)}
-        <button data-action="clear-override" @click=${() => this._do(() => this._api.clearOverride(cid))}>${this._t("clearOverride")}</button>
-        <button @click=${() => this._do(() => this._api.assign(cid, a.profile_id, { enabled: !a.enabled }))}>${this._t(a.enabled ? "disable" : "enable")}</button>
-        <button @click=${() => this._do(() => this._api.unassign(cid))}>${this._t("unassign")}</button>
-      </div>`)}
-      <div class="row">
-        <select @change=${(e: Event) => (this._newClimate = val(e))}>
-          <option value="">${this._t("addClimate")}</option>
-          ${free.map((id) => html`<option value=${id}>${this.hass.states[id].attributes?.friendly_name ?? id}</option>`)}
-        </select>
-        <select @change=${(e: Event) => (this._newProfile = val(e))}>
-          <option value="">${this._t("profiles")}</option>
-          ${Object.values(d.profiles).map((p) => html`<option value=${p.id}>${p.name}</option>`)}
-        </select>
-        <button data-action="assign" ?disabled=${!this._newClimate || !this._newProfile}
-          @click=${() => this._do(() => this._api.assign(this._newClimate, this._newProfile))}>${this._t("assign")}</button>
-      </div>
+      <select @change=${(e: Event) => this._select(val(e))}>
+        ${all.map((id) => html`<option value=${id} ?selected=${id === this._selected}>${this._name(id)}${id in d.assignments ? " ✓" : ""}</option>`)}
+      </select>
+      ${this._selected ? this._renderThermostat(this._selected) : nothing}
     </section>`;
   }
 
-  private _renderProfiles() {
+  private _renderThermostat(cid: string) {
     const d = this._data!;
+    const a = d.assignments[cid];
+    const others = a ? this._users(a.profile_id).filter((id) => id !== cid) : [];
+    return html`<div data-climate=${cid}>
+      <div class="row">
+        ${a ? html`<span>${this._status(cid)}</span>
+          <button data-action="clear-override" @click=${() => this._do(() => this._api.clearOverride(cid))}>${this._t("clearOverride")}</button>
+          <button @click=${() => this._do(() => this._api.assign(cid, a.profile_id, { enabled: !a.enabled }))}>${this._t(a.enabled ? "disable" : "enable")}</button>
+          <button @click=${() => this._do(() => this._api.unassign(cid))}>${this._t("unassign")}</button>` : nothing}
+      </div>
+      <div class="row">
+        <select data-action="link" @change=${(e: Event) => val(e) && this._do(() => this._api.assign(cid, val(e)))}>
+          ${a ? nothing : html`<option value="">${this._t("useSchedule")}</option>`}
+          ${Object.values(d.profiles).map((p) => html`<option value=${p.id} ?selected=${p.id === a?.profile_id}>${p.name} (${this._users(p.id).map((id) => this._name(id)).join(", ") || "-"})</option>`)}
+        </select>
+        <button data-action="own" @click=${() => this._do(() => this._makeOwn(cid))}>${this._t("ownSchedule")}</button>
+      </div>
+      ${others.length ? html`<div class="row">${this._t("sharedWith", { x: others.map((id) => this._name(id)).join(", ") })}</div>` : nothing}
+      ${a ? Object.values(d.conditions).map((c) => html`<label><input type="checkbox" .checked=${a.condition_ids.includes(c.id)}
+          @change=${(e: Event) => this._do(() => this._api.assign(cid, a.profile_id, {
+            condition_ids: checked(e) ? [...a.condition_ids, c.id] : a.condition_ids.filter((x) => x !== c.id),
+          }))} />${c.name}</label>`) : nothing}
+      ${this._profile ? this._renderProfileEditor() : nothing}
+    </div>`;
+  }
+
+  private _renderProfileEditor() {
     const days = this._t("days").split(",");
-    return html`<section>
-      <h3>${this._t("profiles")}</h3>
-      ${Object.values(d.profiles).map((p) => html`<div class="row">
-        <b>${p.name}</b><span>${p.blocks.length}</span>
-        <button @click=${() => (this._profile = structuredClone(p))}>${this._t("edit")}</button>
-        <button @click=${() => this._do(() => this._api.deleteProfile(p.id))}>${this._t("delete")}</button>
-      </div>`)}
-      <button @click=${() => (this._profile = { id: newId("p"), name: "", blocks: [] })}>${this._t("newProfile")}</button>
-      ${this._profile ? html`<div class="editor">
-        <input .value=${this._profile.name} placeholder=${this._t("name")}
+    return html`<div class="editor">
+        <input .value=${this._profile!.name} placeholder=${this._t("name")}
           @input=${(e: Event) => this._patchProfile((p) => (p.name = val(e)))} />
-        ${this._profile.blocks.map((b, i) => html`<div class="row">
+        ${this._profile!.blocks.map((b, i) => html`<div class="row">
           ${days.map((label, day) => html`<label><input type="checkbox" .checked=${b.days.includes(day)}
             @change=${(e: Event) => this._patchProfile((p) => {
               const set = new Set(p.blocks[i].days);
@@ -136,10 +156,9 @@ class ThermoSchedulerCard extends LitElement {
           <button @click=${() => this._patchProfile((p) => p.blocks.splice(i, 1))}>${this._t("removeBlock")}</button>
         </div>`)}
         <button @click=${() => this._patchProfile((p) => p.blocks.push({ days: [0, 1, 2, 3, 4], start: "06:30", temperature: 20, hvac_mode: null }))}>${this._t("addBlock")}</button>
-        <button data-action="save-profile" @click=${() => this._do(async () => { await this._api.saveProfile(this._profile!); this._profile = null; })}>${this._t("save")}</button>
-        <button @click=${() => (this._profile = null)}>${this._t("cancel")}</button>
-      </div>` : nothing}
-    </section>`;
+        <button data-action="save-profile" @click=${() => this._do(() => this._api.saveProfile(this._profile!))}>${this._t("save")}</button>
+        <button @click=${() => { this._profile = null; this._syncProfile(); }}>${this._t("cancel")}</button>
+      </div>`;
   }
 
   private _renderConditions() {
