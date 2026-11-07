@@ -250,7 +250,24 @@ class ThermoSchedulerCard extends LitElement {
     .num { display: inline-flex; align-items: flex-start; font-size: 64px; line-height: 64px; font-weight: 300; letter-spacing: -0.03em; }
     .num sup { font-size: 26px; vertical-align: top; position: relative; top: -4px; margin-left: 1px; }
     .deg { font-size: 26px; line-height: 1; margin: 6px 0 0 4px; font-weight: 300; }
-    .dial-mode { margin-top: 2px; font-size: 15px; color: var(--tone); font-weight: 600; }
+    .dial-mode { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 15px; color: var(--ts-ink2); font-weight: 600; }
+    .dial-mode ha-icon { --mdc-icon-size: 16px; color: var(--tone); }
+    .dial-mode.running { color: var(--tone); }
+    .dial-current { margin-top: 2px; font-size: 15px; color: var(--ts-ink2); }
+    .dial-current b { color: var(--ts-ink); font-weight: 600; }
+    /* temperatura attuale: segnaposto sull'anello, accanto alla manopola del target */
+    .cur-wrap { position: absolute; inset: 0; transform: rotate(calc(135deg + var(--c) * 270deg)); transition: transform 250ms ease; }
+    .cur { position: absolute; top: 7px; left: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--ts-ink); box-shadow: 0 0 0 2px var(--ts-tile); }
+    /* impianto fermo: anello spento; impianto in funzione: colore pieno, alone e respiro lento */
+    .hero .ring { background: conic-gradient(color-mix(in srgb, var(--tone) 38%, var(--ts-ink2)) calc(var(--p) * 270deg), var(--ts-sep) 0); }
+    .hero.is-active { background: color-mix(in srgb, var(--tone) 10%, var(--ts-tile)); }
+    .hero.is-active .ring { background: conic-gradient(var(--tone) calc(var(--p) * 270deg), var(--ts-sep) 0); }
+    .hero.is-active .dial { animation: ts-breathe 3.2s ease-in-out infinite; }
+    .hero:not(.is-active) .knob { box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone) 38%, var(--ts-ink2)), 0 1px 3px rgba(0, 0, 0, 0.25); }
+    @keyframes ts-breathe {
+      0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+      50% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--tone) 55%, transparent)); }
+    }
 
     .pill {
       display: inline-flex;
@@ -636,6 +653,17 @@ class ThermoSchedulerCard extends LitElement {
   private _hvac(climateId: string): string {
     return this.hass.states[climateId]?.state ?? "off";
   }
+  // vero stato dell'impianto: heating/cooling = sta lavorando ora, idle/off = fermo.
+  // null se il termostato non espone hvac_action (non si può sapere).
+  private _running(climateId: string): "heat" | "cool" | "idle" | null {
+    const a = this.hass.states[climateId]?.attributes?.hvac_action;
+    if (a == null) return null;
+    return a === "heating" ? "heat" : a === "cooling" ? "cool" : "idle";
+  }
+  private _currentTemp(climateId: string): number | null {
+    const v = this.hass.states[climateId]?.attributes?.current_temperature;
+    return v == null || Number.isNaN(Number(v)) ? null : Number(v);
+  }
   private _targetTemp(climateId: string): number | null {
     const v = this.hass.states[climateId]?.attributes?.temperature;
     return v == null ? null : Number(v);
@@ -743,17 +771,26 @@ class ThermoSchedulerCard extends LitElement {
     const prefix = next ? (next.k === 0 ? "" : next.k === 1 ? `${this._t("tomorrow")} ` : `${names[next.wd]} `) : "";
     const hvac = this._hvac(cid);
     const hvacTone = hvac === "cool" ? "cool" : hvac === "heat" ? "heat" : "off";
+    const running = this._running(cid);
+    const active = running === "heat" || running === "cool";
+    const cur = this._currentTemp(cid);
+    const curPct = cur == null ? null : Math.min(1, Math.max(0, (cur - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)));
     const modes: string[] = this.hass.states[cid]?.attributes?.hvac_modes ?? [];
-    return html`<section class="hero tone-${hvacTone}" data-climate=${cid}>
+    const heroTone = active ? running : hvacTone;
+    return html`<section class="hero tone-${heroTone} ${active ? "is-active" : ""}" data-climate=${cid} data-running=${running ?? "unknown"}>
       <button class="hero-top" aria-label=${`${this._t("settings")}: ${this._name(cid)}`} @click=${() => this._go("settings")}>
         <span class="hero-name">${this._name(cid)}</span><ha-icon icon="mdi:chevron-right"></ha-icon>
       </button>
-      <span class="dial" style="--p: ${pct}" role="img" aria-label=${`${this._t("target")} ${temp == null ? "–" : this._fmt(temp)} °`}>
+      <span class="dial" style="--p: ${pct}" role="img" aria-label=${`${this._t("target")} ${temp == null ? "–" : this._fmt(temp)} °${cur == null ? "" : `, ${this._t("current")} ${this._fmt(cur)} °`}`}>
         <span class="ring"></span>
+        ${curPct == null ? nothing : html`<span class="cur-wrap" style="--c: ${curPct}"><span class="cur"></span></span>`}
         <span class="knob-wrap"><span class="knob"></span></span>
         <span class="dial-center">
           <span class="num">${parts ? parts.int : "–"}${parts && parts.dec ? html`<sup>${parts.dec}</sup>` : nothing}<span class="deg">°</span></span>
-          <span class="dial-mode">${this._modeLabel(cid)}</span>
+          ${cur == null ? nothing : html`<span class="dial-current" data-role="current">${this._t("current")} <b>${this._fmt(cur)}°</b></span>`}
+          <span class="dial-mode ${active ? "running" : ""}" data-role="running">
+            ${active ? html`<ha-icon icon=${running === "cool" ? "mdi:snowflake" : "mdi:fire"}></ha-icon>${this._t(running === "cool" ? "runningCool" : "runningHeat")}` : this._modeLabel(cid)}
+          </span>
         </span>
       </span>
       <span class="pill status-pill tone-${info.tone}"><ha-icon icon=${info.icon}></ha-icon>${info.text}</span>

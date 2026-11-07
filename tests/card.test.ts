@@ -192,3 +192,39 @@ describe("copy day", () => {
     expect(el.shadowRoot.querySelector('[data-role="copy-panel"]')).toBeNull();
   });
 });
+
+describe("summary: current temperature and running state", () => {
+  const withClimate = async (attrs: Record<string, unknown>) => {
+    const { el } = await mount("it");
+    el.hass = {
+      ...el.hass,
+      states: { ...el.hass.states, "climate.salotto": { state: "heat", attributes: { friendly_name: "Salotto", temperature: 21, ...attrs } } },
+    };
+    await el.updateComplete;
+    return el;
+  };
+
+  it("shows the current temperature and the active state while heating", async () => {
+    const el = await withClimate({ current_temperature: 19.5, hvac_action: "heating" });
+    const root = el.shadowRoot;
+    expect(root.querySelector('[data-role="current"]').textContent).toContain("19,5");
+    expect(root.querySelector(".hero").classList.contains("is-active")).toBe(true);
+    expect(root.querySelector('[data-role="running"]').textContent).toContain("Sta scaldando");
+    expect(root.querySelector(".cur-wrap")).not.toBeNull();
+  });
+
+  it("looks idle when the system is not heating", async () => {
+    const el = await withClimate({ current_temperature: 21, hvac_action: "idle" });
+    const root = el.shadowRoot;
+    expect(root.querySelector(".hero").classList.contains("is-active")).toBe(false);
+    expect(root.querySelector('[data-role="running"]').textContent).toContain("Riscaldamento");
+  });
+
+  it("degrades gracefully without current_temperature / hvac_action", async () => {
+    const el = await withClimate({});
+    const root = el.shadowRoot;
+    expect(root.querySelector('[data-role="current"]')).toBeNull();
+    expect(root.querySelector(".cur-wrap")).toBeNull();
+    expect(root.querySelector(".hero").dataset.running).toBe("unknown");
+  });
+});
