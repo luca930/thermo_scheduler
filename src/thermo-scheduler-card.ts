@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { api, type Block, type Condition, type Data, type Estimate, type LogEntry, type Profile, type Room } from "./api";
+import { copyDay } from "./copy-day";
 import { t } from "./i18n";
 
 type View = "summary" | "settings" | "schedule" | "conditions" | "history";
@@ -27,6 +28,7 @@ class ThermoSchedulerCard extends LitElement {
     _selected: { state: true },
     _view: { state: true },
     _scheduleDay: { state: true },
+    _copyTargets: { state: true },
     _editIndex: { state: true },
     _modeOpen: { state: true },
     _est: { state: true },
@@ -325,6 +327,11 @@ class ThermoSchedulerCard extends LitElement {
       box-shadow: inset 0 -2px 0 var(--ts-sep);
     }
     .tab[aria-pressed="true"] { color: var(--ts-accent); font-weight: 600; box-shadow: inset 0 -3px 0 var(--ts-accent); }
+    .copy-panel { margin-top: 8px; padding-bottom: 12px; }
+    .copy-panel .presets { display: flex; gap: 8px; padding: 0 12px; flex-wrap: wrap; }
+    .copy-panel .footnote { padding: 8px 16px 0; }
+    .copy-panel .actions { padding: 0 12px; }
+    .seg button:disabled { opacity: 0.35; }
     .slots { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
     .slot {
       display: flex;
@@ -461,6 +468,7 @@ class ThermoSchedulerCard extends LitElement {
   _selected = "";
   _view: View = "summary";
   _scheduleDay = todayIndex();
+  _copyTargets: number[] | null = null; // null = pannello di copia chiuso
   _editIndex: number | null = null;
   _modeOpen = false;
   _est: Estimate | null = null;
@@ -888,7 +896,7 @@ class ThermoSchedulerCard extends LitElement {
         <h2>${p.name}</h2><span class="spacer"></span>
       </div>
       <div class="tabs" role="group" aria-label=${this._t("days")}>
-        ${DAYS.map((d) => html`<button type="button" class="tab" aria-pressed=${d === day} @click=${() => (this._scheduleDay = d)}>${names[d]}</button>`)}
+        ${DAYS.map((d) => html`<button type="button" class="tab" aria-pressed=${d === day} @click=${() => { this._scheduleDay = d; this._copyTargets = null; }}>${names[d]}</button>`)}
       </div>
       <div class="slots">
         ${rows.length ? rows.map(({ block, i }) => html`<button class="slot tone-${this._blockTone(block)}" @click=${() => (this._editIndex = i)}>
@@ -898,11 +906,46 @@ class ThermoSchedulerCard extends LitElement {
           <ha-icon icon="mdi:chevron-right"></ha-icon>
         </button>`) : html`<p class="footnote">${this._t("noBlocksDay")}</p>`}
         <button class="add-pill" @click=${() => this._addBlock()}><ha-icon icon="mdi:plus"></ha-icon>${this._t("addBlock")}</button>
+        ${this._renderCopy(day, rows.length > 0)}
       </div>
       <div class="actions">
         <button class="primary" data-action="save-profile" @click=${() => this._saveProfile()}>${this._t("save")}</button>
         <button class="ghost" @click=${() => this._back()}>${this._t("cancel")}</button>
       </div>`;
+  }
+
+  // copia la giornata scelta su altri giorni (sostituisce le fasce presenti)
+  private _renderCopy(day: number, hasSlots: boolean) {
+    const targets = this._copyTargets;
+    if (!targets) {
+      return hasSlots
+        ? html`<button class="add-pill" data-action="copy-day" @click=${() => (this._copyTargets = [])}><ha-icon icon="mdi:content-copy"></ha-icon>${this._t("copyDay")}</button>`
+        : nothing;
+    }
+    const names = this._dayNames();
+    const toggle = (d: number) => (this._copyTargets = targets.includes(d) ? targets.filter((x) => x !== d) : [...targets, d]);
+    const preset = (list: number[]) => (this._copyTargets = list.filter((d) => d !== day));
+    return html`<div class="group copy-panel" data-role="copy-panel">
+      <div class="stack"><span class="caption">${this._t("copyDayTo", { x: names[day] })}</span></div>
+      <div class="seg" role="group" aria-label=${this._t("days")}>
+        ${DAYS.map((d) => html`<button type="button" data-day=${d} ?disabled=${d === day} aria-pressed=${targets.includes(d)} @click=${() => toggle(d)}>${names[d]}</button>`)}
+      </div>
+      <div class="presets">
+        <button type="button" class="ghost" @click=${() => preset([0, 1, 2, 3, 4])}>${this._t("weekdays")}</button>
+        <button type="button" class="ghost" @click=${() => preset([5, 6])}>${this._t("weekend")}</button>
+        <button type="button" class="ghost" @click=${() => preset(DAYS)}>${this._t("allDays")}</button>
+      </div>
+      <p class="footnote">${this._t("copyDayHint")}</p>
+      <div class="actions">
+        <button class="primary" data-action="apply-copy" ?disabled=${!targets.length} @click=${() => this._applyCopy(day, targets)}>${this._t("apply")}</button>
+        <button class="ghost" @click=${() => (this._copyTargets = null)}>${this._t("cancel")}</button>
+      </div>
+    </div>`;
+  }
+
+  private _applyCopy(day: number, targets: number[]) {
+    this._patchProfile((x) => (x.blocks = copyDay(x.blocks, day, targets)));
+    this._copyTargets = null;
   }
 
   private _addBlock() {

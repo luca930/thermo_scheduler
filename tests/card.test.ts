@@ -175,3 +175,20 @@ describe("thermo-scheduler-card", () => {
     expect(el.shadowRoot.textContent).toContain("Fascia applicata");
   });
 });
+
+describe("copy day", () => {
+  it("copies a day's slots onto other days", async () => {
+    const { el } = await mount("it");
+    await click(el, ".hero-top");
+    await click(el, '[data-action="open-schedule"]');
+    await click(el, ".tabs button:nth-child(1)");
+    await click(el, '[data-action="copy-day"]');
+    expect(el.shadowRoot.querySelector('[data-action="apply-copy"]').disabled).toBe(true);
+    await click(el, '.copy-panel [data-day="4"]');
+    await click(el, '[data-action="apply-copy"]');
+    const monday = el._profile.blocks.filter((x: any) => x.days.includes(0)).map((x: any) => x.start);
+    const friday = el._profile.blocks.filter((x: any) => x.days.includes(4)).map((x: any) => x.start);
+    expect(friday).toEqual(monday);
+    expect(el.shadowRoot.querySelector('[data-role="copy-panel"]')).toBeNull();
+  });
+});
